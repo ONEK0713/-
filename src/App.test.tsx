@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { readTagsQueued } from './lib/tags'
 
 // 真解析要读真实的音频字节，测试里用假的 File 必然失败；这里给一个稳定的假标签源。
 vi.mock('./lib/tags', () => ({
@@ -168,6 +169,37 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: '确定清空？' }))
     expect(screen.getByText('曲库还是空的')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('曲库已清空，源文件没动')
+  })
+
+  it('清空曲库后，还在读的那批标签不会再改提示', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.mocked(readTagsQueued).mockImplementationOnce(async () => {
+      await gate
+      return {
+        title: '迟到的标签',
+        artist: '迟到的歌手',
+        album: '',
+        trackNo: null,
+        year: null,
+        duration: 100,
+        coverBytes: 0,
+        codec: 'FLAC',
+        lossless: true,
+      }
+    })
+
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), { target: { files: [audioFile('slow.flac')] } })
+
+    await userEvent.click(screen.getByRole('button', { name: '清空曲库' }))
+    await userEvent.click(screen.getByRole('button', { name: '确定清空？' }))
+
+    release()
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('曲库已清空'))
+    expect(screen.queryByText('迟到的歌手')).not.toBeInTheDocument()
   })
 
   it('空曲库时不显示清空按钮', () => {

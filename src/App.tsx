@@ -53,6 +53,8 @@ export default function App() {
   const dragDepthRef = useRef(0)
   // 刚移除、还能撤销的那一首。撤销窗口内不回收 blob URL，否则撤销回来也放不了。
   const pendingUndoRef = useRef<{ track: Track; index: number } | null>(null)
+  // 曲库"代"：清空时 +1，正在跑的标签解析据此判断自己已经过期。
+  const libraryEpochRef = useRef(0)
 
   // webkitdirectory 不在 React 的 props 类型里，直接打属性最省事。
   useEffect(() => {
@@ -175,10 +177,14 @@ export default function App() {
   const hydrateTags = useCallback(
     async (entries: ImportEntry[]) => {
       const total = entries.length
+      // 清空曲库会 +1：读标签是异步的，别让它在清空后又把提示改回“已导入”。
+      const epoch = libraryEpochRef.current
+      const stale = () => libraryEpochRef.current !== epoch
       let done = 0
       let failed = 0
 
       const patch = (id: string, next: Partial<Track>) => {
+        if (stale()) return
         setTracks((prev) => prev.map((track) => (track.id === id ? { ...track, ...next } : track)))
       }
 
@@ -210,6 +216,7 @@ export default function App() {
         }
 
         done += 1
+        if (stale()) return
         if (done === total) {
           notify(
             failed > 0
@@ -329,6 +336,7 @@ export default function App() {
   )
 
   const clearLibrary = useCallback(() => {
+    libraryEpochRef.current += 1
     objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
     objectUrlsRef.current = []
     pendingUndoRef.current = null
