@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .dsh-acl-recovery/
+.tmp-*/
+.tmp-*
 *.local
 .DS_Store
 Thumbs.db
