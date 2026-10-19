@@ -5,6 +5,10 @@ import PlayerBar from './components/PlayerBar'
 import TopBar from './components/TopBar'
 import TrackList from './components/TrackList'
 import { AUDIO_ACCEPT, isAudioFileName, stripExtension } from './lib/format'
+import { mapLimit } from './lib/concurrency'
+import { cacheKey, readCachedTags, writeCachedTags } from './lib/meta-cache'
+import type { TrackTags } from './lib/metadata'
+import { readTagsQueued } from './lib/tags'
 import type { Track } from './types'
 
 interface Notice {
@@ -12,9 +16,21 @@ interface Notice {
   action?: { label: string; onClick: () => void }
 }
 
-// 跨浏览器都拿不到真实路径，只能用"名字+大小+修改时间"当指纹。
-function fileTrackId(file: File): string {
-  return `${file.name}-${file.size}-${file.lastModified}`
+interface ImportEntry {
+  file: File
+  path: string
+  id: string
+}
+
+// 浏览器不给真实路径：选文件夹时把 webkitRelativePath 当相对路径，多选文件就退回文件名。
+function fileTrackPath(file: File): string {
+  const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath
+  return relative && relative.length > 0 ? relative : file.name
+}
+
+// 指纹带上相对路径：不同文件夹里的两个 01.mp3 不会被当成同一首。
+function fileTrackId(path: string, file: File): string {
+  return `${path}|${file.size}|${file.lastModified}`
 }
 
 export default function App() {
@@ -154,6 +170,60 @@ export default function App() {
     if (audioRef.current) audioRef.current.volume = next
   }, [])
 
+  // 读标签：先命中 IndexedDB 缓存，没有才丢进 Worker 池；每读完一首就把那一行填上，
+  // 不阻塞列表（导入 1000 首时列表先出现，标签慢慢长出来）。
+  const hydrateTags = useCallback(
+    async (entries: ImportEntry[]) => {
+      const total = entries.length
+      let done = 0
+      let failed = 0
+
+      const patch = (id: string, next: Partial<Track>) => {
+        setTracks((prev) => prev.map((track) => (track.id === id ? { ...track, ...next } : track)))
+      }
+
+      await mapLimit(entries, 3, async (entry) => {
+        let tags: TrackTags | null = null
+        try {
+          const key = cacheKey(entry.path, entry.file.size, entry.file.lastModified)
+          tags = await readCachedTags(key)
+          if (!tags) {
+            tags = await readTagsQueued(entry.file)
+            void writeCachedTags(key, tags)
+          }
+        } catch {
+          tags = null
+        }
+
+        if (tags) {
+          patch(entry.id, {
+            // 标签里没有标题（有些碟只有文件名）就保留文件名。
+            title: tags.title || stripExtension(entry.file.name),
+            artist: tags.artist,
+            album: tags.album,
+            duration: tags.duration,
+            tagState: 'ready',
+          })
+        } else {
+          failed += 1
+          patch(entry.id, { tagState: 'failed' })
+        }
+
+        done += 1
+        if (done === total) {
+          notify(
+            failed > 0
+              ? `已导入 ${total} 首，${failed} 首读不到标签，先用文件名显示`
+              : `已导入 ${total} 首`,
+          )
+        } else if (done % 5 === 0) {
+          notify(`正在读标签 ${done}/${total}`)
+        }
+      })
+    },
+    [notify],
+  )
+
   // 导入就是导入：同一批文件重复选只会去重，不会因为"以前移除过"而拦下来。
   const addFiles = useCallback(
     (input: FileList | File[] | null) => {
@@ -167,37 +237,45 @@ export default function App() {
       }
 
       const known = new Set(tracks.map((track) => track.id))
-      const fresh: Track[] = []
+      const entries: ImportEntry[] = []
+      const placeholders: Track[] = []
       for (const file of audioFiles) {
-        const id = fileTrackId(file)
+        const path = fileTrackPath(file)
+        const id = fileTrackId(path, file)
         if (known.has(id)) continue
         known.add(id)
         const src = URL.createObjectURL(file)
         objectUrlsRef.current.push(src)
-        fresh.push({
+        entries.push({ file, path, id })
+        placeholders.push({
           id,
+          path,
           title: stripExtension(file.name),
           artist: '',
           album: '',
           duration: 0,
           src,
+          tagState: 'pending',
         })
       }
 
-      if (fresh.length === 0) {
+      if (placeholders.length === 0) {
         notify('这些歌曲已经在列表里了')
         return
       }
 
-      setTracks((prev) => [...prev, ...fresh])
-      setCurrentId((id) => id ?? fresh[0]?.id ?? null)
+      // 先插占位行再读标签：等全部解析完再显示，导入几十首时会有几秒白屏。
+      setTracks((prev) => [...prev, ...placeholders])
+      setCurrentId((id) => id ?? placeholders[0]?.id ?? null)
 
       const skipped = files.length - audioFiles.length
-      const parts = [`已导入 ${fresh.length} 首`]
+      const parts = [`已导入 ${placeholders.length} 首`]
       if (skipped > 0) parts.push(`跳过 ${skipped} 个不支持的文件`)
-      notify(parts.join('，'))
+      notify(`${parts.join('，')}，正在读标签…`)
+
+      void hydrateTags(entries)
     },
-    [notify, tracks],
+    [hydrateTags, notify, tracks],
   )
 
   // 撤销移除：把歌按原位置放回去。

@@ -19,6 +19,7 @@ export default function TrackList({ tracks, currentId, playing, onSelect, onRemo
     <div className="list" role="list" aria-label="曲库列表">
       {tracks.map((track, index) => {
         const active = track.id === currentId
+        const pending = track.tagState === 'pending'
         return (
           <div
             key={track.id}
@@ -39,9 +40,10 @@ export default function TrackList({ tracks, currentId, playing, onSelect, onRemo
             <span className="title" title={track.title}>
               {track.title}
             </span>
-            <span className="artist">{track.artist || '—'}</span>
-            <span className="album">{track.album || '—'}</span>
-            <span className="duration">{formatTime(track.duration)}</span>
+            {/* 还在读标签时显示省略号：用 '—' 会被误读成"这首歌没有歌手"。 */}
+            <span className="artist">{pending ? '…' : track.artist || '—'}</span>
+            <span className="album">{pending ? '…' : track.album || '—'}</span>
+            <span className="duration">{pending || track.duration <= 0 ? '--:--' : formatTime(track.duration)}</span>
             <button
               className="row-remove"
               type="button"

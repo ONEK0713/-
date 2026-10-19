@@ -1,7 +1,22 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+
+// 真解析要读真实的音频字节，测试里用假的 File 必然失败；这里给一个稳定的假标签源。
+vi.mock('./lib/tags', () => ({
+  readTagsQueued: vi.fn(async (file: File) => ({
+    title: file.name.replace(/\.[^.]+$/, ''),
+    artist: '测试歌手',
+    album: '测试专辑',
+    trackNo: null,
+    year: null,
+    duration: 200,
+    coverBytes: 0,
+    codec: 'FLAC',
+    lossless: true,
+  })),
+}))
 
 function pickFileInput(container: HTMLElement): HTMLInputElement {
   const input = container.querySelector('input[type="file"]')
@@ -71,6 +86,17 @@ describe('App', () => {
     expect(list.getByText('张震岳-亏欠')).toBeInTheDocument()
     expect(list.getByText('张震岳-浪人的…')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('已导入 2 首')
+  })
+
+  it('导入后回填真实歌手、专辑与时长', async () => {
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), { target: { files: [audioFile('alpha.flac')] } })
+
+    const list = within(screen.getByRole('list', { name: '曲库列表' }))
+    await waitFor(() => expect(list.getByText('测试歌手')).toBeInTheDocument())
+    expect(list.getByText('测试专辑')).toBeInTheDocument()
+    expect(list.getByText('3:20')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('已导入 1 首')
   })
 
   it('非音频文件被跳过并给出提示', () => {

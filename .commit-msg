@@ -1,0 +1,6 @@
+feat: M1 读标签——Worker 解析、IndexedDB 缓存、脏编码兜底
+
+- 导入后先插占位行，再按 3 路并发在 Worker 里读标签，逐条回填歌手/专辑/时长
+- IndexedDB 按 path|size|mtime 缓存标签，第二次导入不再碰文件
+- ID3v2 声明 ISO-8859-1 实写 GBK 的乱码按字节还原（08.罗庄的冬天.mp3 实测）
+- music-metadata 动态加载，主包回到 240KB（gzip 76KB）
