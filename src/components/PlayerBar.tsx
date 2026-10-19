@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { useEffect, useState } from 'react'
 import { formatTime } from '../lib/format'
 import type { Track } from '../types'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, QueueIcon, VolumeIcon } from './icons'
@@ -43,12 +44,19 @@ export default function PlayerBar({
   const total = duration > 0 ? duration : (track?.duration ?? 0)
   const seekMax = total > 0 ? total : 1
   const coverUrl = useCoverUrl(track?.coverHash ?? null)
+  // 封面解码失败（存的是坏数据、格式浏览器不认）时退回 ♪，不要留一个破图标。
+  const [coverBroken, setCoverBroken] = useState(false)
+  useEffect(() => setCoverBroken(false), [coverUrl])
 
   return (
     <footer className="player">
       <div className="now">
         <div className="cover" aria-hidden="true">
-          {coverUrl ? <img src={coverUrl} alt="" /> : <span>{track ? '♪' : ''}</span>}
+          {coverUrl && !coverBroken ? (
+            <img src={coverUrl} alt="" onError={() => setCoverBroken(true)} />
+          ) : (
+            <span>{track ? '♪' : ''}</span>
+          )}
         </div>
         <div className="now-text">
           <div className="now-title">{track?.title ?? '未播放'}</div>

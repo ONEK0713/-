@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react'
+import { fireEvent, render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Track } from '../types'
 import PlayerBar from './PlayerBar'
@@ -59,6 +59,20 @@ describe('PlayerBar 封面', () => {
   it('没有封面时退回音符占位', () => {
     const { container } = renderBar(track())
     expect(container.querySelector('.cover img')).toBeNull()
+    expect(container.querySelector('.cover span')?.textContent).toBe('♪')
+  })
+
+  it('封面解码失败时退回音符占位，不留破图标', async () => {
+    const { container } = renderBar(track({ coverHash: 'abc123' }))
+    const image = await waitFor(() => {
+      const found = container.querySelector('.cover img')
+      if (!found) throw new Error('还没渲染出图片')
+      return found
+    })
+
+    fireEvent.error(image)
+
+    await waitFor(() => expect(container.querySelector('.cover img')).toBeNull())
     expect(container.querySelector('.cover span')?.textContent).toBe('♪')
   })
 })

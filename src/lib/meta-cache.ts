@@ -20,7 +20,7 @@ let dbPromise: Promise<IDBDatabase | null> | null = null
 
 function openDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise
-  dbPromise = new Promise<IDBDatabase | null>((resolve) => {
+  const promise = new Promise<IDBDatabase | null>((resolve) => {
     if (typeof indexedDB === 'undefined') {
       resolve(null)
       return
@@ -39,12 +39,29 @@ function openDb(): Promise<IDBDatabase | null> {
       if (!db.objectStoreNames.contains(COVERS)) db.createObjectStore(COVERS)
       if (!db.objectStoreNames.contains(SOURCES)) db.createObjectStore(SOURCES)
     }
-    request.onsuccess = () => resolve(request.result)
-    // 隐私模式、配额为 0 之类的情况：能播就行，缓存失败不算错误。
-    request.onerror = () => resolve(null)
-    request.onblocked = () => resolve(null)
+    request.onsuccess = () => {
+      const db = request.result
+      // 别的标签页要升级库时让路；下次调用重新打开，不要拿旧连接一直失败。
+      db.onversionchange = () => {
+        db.close()
+        dbPromise = null
+      }
+      db.onclose = () => {
+        dbPromise = null
+      }
+      resolve(db)
+    }
+    // 隐私模式、配额为 0、被别的标签页挡住升级：能播就行。
+    // 注意这里要把 dbPromise 清掉，否则一次失败会被记一辈子——封面和标签缓存会一直"失效"。
+    const fail = () => {
+      dbPromise = null
+      resolve(null)
+    }
+    request.onerror = fail
+    request.onblocked = fail
   })
-  return dbPromise
+  dbPromise = promise
+  return promise
 }
 
 function run<T>(

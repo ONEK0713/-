@@ -242,6 +242,14 @@ export default function App() {
         try {
           const key = cacheKey(entry.path, entry.file.size, entry.file.lastModified)
           tags = await readCachedTags(key)
+          if (tags) {
+            // 两处缓存可能对不上：
+            // 一是老版本写下的条目里根本没有 coverHash 字段，二是条目说有封面但封面库查不到图
+            // （清过缓存、换过浏览器配置、升级被别的标签页挡住）。两种情况都当没缓存，重读文件。
+            const legacyEntry = !('coverHash' in tags)
+            const coverLost = Boolean(tags.coverHash) && !(await hasCover(tags.coverHash as string))
+            if (legacyEntry || coverLost) tags = null
+          }
           if (!tags) {
             const parsed = await readTagsQueued(entry.file)
             tags = parsed.tags
