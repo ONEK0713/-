@@ -3,17 +3,21 @@ import { SearchIcon } from './icons'
 interface TopBarProps {
   query: string
   trackCount: number
+  confirmingClear: boolean
   onQueryChange: (value: string) => void
   onImportFiles: () => void
   onImportFolder: () => void
+  onRequestClear: () => void
 }
 
 export default function TopBar({
   query,
   trackCount,
+  confirmingClear,
   onQueryChange,
   onImportFiles,
   onImportFolder,
+  onRequestClear,
 }: TopBarProps) {
   return (
     <header className="topbar">
@@ -36,6 +40,16 @@ export default function TopBar({
       </div>
 
       <div className="topbar-actions">
+        {/* 清空走两步：第一下只是变成"确定清空？"，避免手滑把曲库清掉。 */}
+        {trackCount > 0 ? (
+          <button
+            className={confirmingClear ? 'btn-import ghost confirming' : 'btn-import ghost'}
+            type="button"
+            onClick={onRequestClear}
+          >
+            {confirmingClear ? '确定清空？' : '清空曲库'}
+          </button>
+        ) : null}
         <button className="btn-import" type="button" onClick={onImportFolder}>
           选择文件夹
         </button>

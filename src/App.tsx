@@ -17,6 +17,7 @@ export default function App() {
   const [dragging, setDragging] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -29,7 +30,7 @@ export default function App() {
     folderInputRef.current?.setAttribute('webkitdirectory', '')
   }, [])
 
-  // blob: URL 一直留到页面卸载：M0 没有"移除曲目"，提前回收可能回收掉正在播放的那条。
+  // 卸载时兜底回收；单曲移除时已经就地 revoke 过了，这里只处理剩下的。
   useEffect(() => {
     const urls = objectUrlsRef.current
     return () => {
@@ -46,6 +47,12 @@ export default function App() {
     const timer = window.setTimeout(() => setNotice(null), 3200)
     return () => window.clearTimeout(timer)
   }, [notice])
+
+  useEffect(() => {
+    if (!confirmClear) return
+    const timer = window.setTimeout(() => setConfirmClear(false), 3000)
+    return () => window.clearTimeout(timer)
+  }, [confirmClear])
 
   const currentIndex = useMemo(
     () => tracks.findIndex((track) => track.id === currentId),
@@ -166,6 +173,52 @@ export default function App() {
     [tracks],
   )
 
+  // 从曲库移除：只丢内存里的这一条和它的 blob URL，磁盘上的文件不动。
+  const removeTrack = useCallback(
+    (track: Track) => {
+      URL.revokeObjectURL(track.src)
+      objectUrlsRef.current = objectUrlsRef.current.filter((url) => url !== track.src)
+      setTracks((prev) => prev.filter((item) => item.id !== track.id))
+
+      if (track.id === currentId) {
+        const audio = audioRef.current
+        audio?.pause()
+        audio?.removeAttribute('src')
+        setCurrentId(null)
+        setPlaying(false)
+        setElapsed(0)
+        setDuration(0)
+      }
+      setNotice(`已从曲库移除《${track.title}》，源文件没动`)
+    },
+    [currentId],
+  )
+
+  const clearLibrary = useCallback(() => {
+    objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+    objectUrlsRef.current = []
+    const audio = audioRef.current
+    audio?.pause()
+    audio?.removeAttribute('src')
+    setTracks([])
+    setCurrentId(null)
+    setPlaying(false)
+    setElapsed(0)
+    setDuration(0)
+    setQuery('')
+    setNotice('曲库已清空，源文件没动')
+  }, [])
+
+  // 清空要点两下：第一下把按钮变成"确定清空？"，3 秒内不点就自己退回。
+  const requestClear = useCallback(() => {
+    if (!confirmClear) {
+      setConfirmClear(true)
+      return
+    }
+    setConfirmClear(false)
+    clearLibrary()
+  }, [clearLibrary, confirmClear])
+
   const handleFileInput = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       addFiles(event.currentTarget.files)
@@ -173,7 +226,6 @@ export default function App() {
     },
     [addFiles],
   )
-
   const handleDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault()
@@ -204,9 +256,11 @@ export default function App() {
       <TopBar
         query={query}
         trackCount={tracks.length}
+        confirmingClear={confirmClear}
         onQueryChange={setQuery}
         onImportFiles={() => fileInputRef.current?.click()}
         onImportFolder={() => folderInputRef.current?.click()}
+        onRequestClear={requestClear}
       />
 
       <main className="content">
@@ -217,6 +271,7 @@ export default function App() {
             <span className="col-artist">歌手</span>
             <span className="col-album">专辑</span>
             <span className="col-duration">时长</span>
+            <span className="col-actions" aria-hidden="true" />
           </div>
           {tracks.length === 0 ? (
             <div className="empty-state">
@@ -244,6 +299,7 @@ export default function App() {
               currentId={currentId}
               playing={playing}
               onSelect={playTrack}
+              onRemove={removeTrack}
             />
           )}
         </div>

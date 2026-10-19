@@ -17,6 +17,9 @@ beforeEach(() => {
   // jsdom 没有实现 createObjectURL，桩掉即可（只验证 UI 行为）。
   URL.createObjectURL = vi.fn(() => 'blob:mock-url')
   URL.revokeObjectURL = vi.fn()
+  // jsdom 的 HTMLMediaElement.play 会抛 "not implemented"，直接桩成静默成功。
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
 })
 
 describe('App', () => {
@@ -63,5 +66,58 @@ describe('App', () => {
     await userEvent.clear(screen.getByLabelText('搜索歌曲'))
     await userEvent.type(screen.getByLabelText('搜索歌曲'), '没有这个')
     expect(screen.getByText('没有匹配的歌曲')).toBeInTheDocument()
+  })
+
+  it('可以移除单曲，只影响列表，不动源文件', async () => {
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), {
+      target: { files: [audioFile('alpha.flac'), audioFile('beta.flac')] },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '从曲库移除 alpha' }))
+
+    const list = within(screen.getByRole('list', { name: '曲库列表' }))
+    expect(list.queryByText('alpha')).not.toBeInTheDocument()
+    expect(list.getByText('beta')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('已从曲库移除《alpha》，源文件没动')
+    // 只该回收被移除那首的 blob URL。
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url')
+  })
+
+  it('移除正在播放的曲目后播放条回到未播放', async () => {
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), {
+      target: { files: [audioFile('alpha.flac'), audioFile('beta.flac')] },
+    })
+
+    const list = within(screen.getByRole('list', { name: '曲库列表' }))
+    await userEvent.click(list.getByText('alpha'))
+    expect(screen.getByRole('button', { name: '从曲库移除 alpha' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '从曲库移除 alpha' }))
+
+    expect(screen.getByText('未播放')).toBeInTheDocument()
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled()
+  })
+
+  it('清空曲库要点两下，避免手滑', async () => {
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), {
+      target: { files: [audioFile('alpha.flac'), audioFile('beta.flac')] },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '清空曲库' }))
+    // 第一下只是变文案，列表还在。
+    expect(screen.getByRole('button', { name: '确定清空？' })).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: '曲库列表' })).getByText('beta')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '确定清空？' }))
+    expect(screen.getByText('曲库还是空的')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('曲库已清空，源文件没动')
+  })
+
+  it('空曲库时不显示清空按钮', () => {
+    render(<App />)
+    expect(screen.queryByRole('button', { name: '清空曲库' })).not.toBeInTheDocument()
   })
 })
