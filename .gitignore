@@ -2,6 +2,10 @@ node_modules/
 dist/
 .pnpm-store/
 *.log
+# 临时工具与凭据（gh 二进制、OAuth 配置都不会进仓库）
+.tools/
+.gh-config/
+.gh-token.txt
 # 提交信息临时文件，用 git commit -F 读取
 .commit-msg
 
