@@ -3,8 +3,10 @@ import TopBar from './components/TopBar'
 import TrackList from './components/TrackList'
 import PlayerBar from './components/PlayerBar'
 import ImportMenu from './components/ImportMenu'
+import ListHead from './components/ListHead'
 import { AUDIO_ACCEPT } from './lib/format'
 import { filterTracks } from './lib/search'
+import { nextSort, sortTracks, type SortKey, type SortState } from './lib/sort'
 import { useImports } from './hooks/useImports'
 import { useLibrary } from './hooks/useLibrary'
 import { useNotice } from './hooks/useNotice'
@@ -30,6 +32,7 @@ export default function App() {
   })
 
   const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<SortState>({ key: 'default', direction: 'asc' })
   const [confirmClear, setConfirmClear] = useState(false)
   const searchRef = useRef<HTMLInputElement | null>(null)
 
@@ -87,7 +90,16 @@ export default function App() {
     clearAll()
   }, [clearAll, confirmClear])
 
-  const visibleTracks = useMemo(() => filterTracks(tracks, query), [tracks, query])
+  // 排序与搜索只影响列表怎么显示；上/下一首始终按导入顺序走，
+  // 否则搜一下就换一首歌、按歌手排完序又换个顺序，行为会变得难以预期。
+  const visibleTracks = useMemo(
+    () => sortTracks(filterTracks(tracks, query), sort),
+    [sort, tracks, query],
+  )
+
+  const changeSort = useCallback((key: Exclude<SortKey, 'default'>) => {
+    setSort((previous) => nextSort(previous, key))
+  }, [])
 
   return (
     <div className="app" {...imports.dragProps}>
@@ -104,14 +116,7 @@ export default function App() {
 
       <main className="content">
         <div className="list-scroll">
-          <div className="list-head" aria-hidden="true">
-            <span className="col-idx">#</span>
-            <span className="col-title">标题</span>
-            <span className="col-artist">歌手</span>
-            <span className="col-album">专辑</span>
-            <span className="col-duration">时长</span>
-            <span className="col-actions" aria-hidden="true" />
-          </div>
+          <ListHead sort={sort} onSort={changeSort} />
           {tracks.length === 0 ? (
             <div className="empty-state">
               <p className="empty-title">曲库还是空的</p>

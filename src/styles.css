@@ -180,7 +180,36 @@
     font-size: 12px;
   }
 
-  .list { padding: 6px 0 16px; }
+  .list {
+    padding: 6px 0 16px;
+  }
+
+  /* 表头：文字是可点的按钮，但看起来仍像表头 */
+  .col-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .col-sort:hover { color: var(--text); }
+
+  .col-sort[data-active] { color: var(--text); font-weight: 600; }
+
+  .sort-arrow {
+    font-size: 10px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity .12s;
+  }
+
+  .col-sort:hover .sort-arrow,
+  .col-sort[data-active] .sort-arrow { opacity: 1; }
 
   .row {
     height: 54px;

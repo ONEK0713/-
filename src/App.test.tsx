@@ -315,4 +315,48 @@ describe('App', () => {
     fireEvent.keyDown(document.body, { key: 'm' })
     expect(screen.getByRole('button', { name: '静音' })).toHaveAttribute('aria-pressed', 'false')
   })
+
+  it('点表头按标题排序：升序、降序、第三下回到导入顺序', async () => {
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), {
+      target: { files: [audioFile('b.flac'), audioFile('a.flac'), audioFile('c.flac')] },
+    })
+
+    const rows = () =>
+      within(screen.getByRole('list', { name: '曲库列表' }))
+        .getAllByRole('listitem')
+        .map((row) => row.querySelector('.title')?.textContent)
+    const header = () => screen.getByRole('columnheader', { name: /标题/ })
+
+    expect(rows()).toEqual(['b', 'a', 'c'])
+
+    await userEvent.click(screen.getByRole('button', { name: '按标题排序' }))
+    expect(rows()).toEqual(['a', 'b', 'c'])
+    expect(header()).toHaveAttribute('aria-sort', 'ascending')
+
+    await userEvent.click(screen.getByRole('button', { name: '按标题排序' }))
+    expect(rows()).toEqual(['c', 'b', 'a'])
+    expect(header()).toHaveAttribute('aria-sort', 'descending')
+
+    await userEvent.click(screen.getByRole('button', { name: '按标题排序' }))
+    expect(rows()).toEqual(['b', 'a', 'c'])
+    expect(header()).toHaveAttribute('aria-sort', 'none')
+  })
+
+  it('排序不影响上下曲：切歌仍按导入顺序', async () => {
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), {
+      target: { files: [audioFile('b.flac'), audioFile('a.flac')] },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '按标题排序' }))
+    const list = within(screen.getByRole('list', { name: '曲库列表' }))
+    expect(list.getAllByRole('listitem')[0]?.querySelector('.title')?.textContent).toBe('a')
+
+    // 显示顺序是 a、b，导入顺序是 b、a：播 b 再点下一首，应该去 a。
+    await userEvent.click(list.getByText('b'))
+    await userEvent.click(screen.getByRole('button', { name: '下一首' }))
+
+    expect(container.querySelector('.now-title')?.textContent).toBe('a')
+  })
 })
