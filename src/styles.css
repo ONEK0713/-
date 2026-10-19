@@ -601,6 +601,9 @@
     left: 50%;
     bottom: 108px;
     z-index: 60;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
     padding: 9px 16px;
     border-radius: 999px;
     background: var(--text);
@@ -613,6 +616,22 @@
   }
 
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* 提示里的"撤销"：跟着 toast 反色，不做成实体按钮，免得抢焦点。 */
+  .toast-action {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    opacity: .85;
+  }
+
+  .toast-action:hover { opacity: 1; }
 
   /* ---------- 窄屏 ---------- */
 

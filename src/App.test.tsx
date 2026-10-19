@@ -13,7 +13,13 @@ function audioFile(name: string): File {
   return new File(['fake-audio'], name, { type: 'audio/flac' })
 }
 
+// 与 App 里保持一致：文件名 + 大小 + 修改时间
+function trackId(file: File): string {
+  return `${file.name}-${file.size}-${file.lastModified}`
+}
+
 beforeEach(() => {
+  localStorage.clear()
   // jsdom 没有实现 createObjectURL，桩掉即可（只验证 UI 行为）。
   URL.createObjectURL = vi.fn(() => 'blob:mock-url')
   URL.revokeObjectURL = vi.fn()
@@ -79,9 +85,7 @@ describe('App', () => {
     const list = within(screen.getByRole('list', { name: '曲库列表' }))
     expect(list.queryByText('alpha')).not.toBeInTheDocument()
     expect(list.getByText('beta')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('已从曲库移除《alpha》，源文件没动')
-    // 只该回收被移除那首的 blob URL。
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url')
+    expect(screen.getByRole('status')).toHaveTextContent('已移除《alpha》，源文件没动')
   })
 
   it('移除正在播放的曲目后播放条回到未播放', async () => {
@@ -119,5 +123,71 @@ describe('App', () => {
   it('空曲库时不显示清空按钮', () => {
     render(<App />)
     expect(screen.queryByRole('button', { name: '清空曲库' })).not.toBeInTheDocument()
+  })
+
+  it('移除过的歌会被记住，重新导入时不再出现', async () => {
+    const alpha = audioFile('alpha.flac')
+    const beta = audioFile('beta.flac')
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), { target: { files: [alpha, beta] } })
+
+    await userEvent.click(screen.getByRole('button', { name: '从曲库移除 alpha' }))
+    expect(localStorage.getItem('local-player:excluded:v1')).toContain(trackId(alpha))
+
+    // 再选一次同样的文件：alpha 不该回来。
+    fireEvent.change(pickFileInput(container), { target: { files: [alpha, beta] } })
+
+    const list = within(screen.getByRole('list', { name: '曲库列表' }))
+    expect(list.queryByText('alpha')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('1 首你之前移除过，不再导入')
+  })
+
+  it('新开页面也记得移除过哪些歌', () => {
+    const alpha = audioFile('alpha.flac')
+    localStorage.setItem('local-player:excluded:v1', JSON.stringify([trackId(alpha)]))
+
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), {
+      target: { files: [alpha, audioFile('beta.flac')] },
+    })
+
+    const list = within(screen.getByRole('list', { name: '曲库列表' }))
+    expect(list.queryByText('alpha')).not.toBeInTheDocument()
+    expect(list.getByText('beta')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('已导入 1 首，1 首你移除过，已跳过')
+  })
+
+  it('移除后可以撤销，歌回到原位且不再被排除', async () => {
+    const alpha = audioFile('alpha.flac')
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), {
+      target: { files: [alpha, audioFile('beta.flac'), audioFile('gamma.flac')] },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '从曲库移除 alpha' }))
+    await userEvent.click(screen.getByRole('button', { name: '撤销' }))
+
+    const titles = within(screen.getByRole('list', { name: '曲库列表' }))
+      .getAllByRole('listitem')
+      .map((row) => row.querySelector('.title')?.textContent)
+    expect(titles).toEqual(['alpha', 'beta', 'gamma'])
+    expect(localStorage.getItem('local-player:excluded:v1')).not.toContain(trackId(alpha))
+    expect(screen.getByRole('status')).toHaveTextContent('已恢复《alpha》')
+  })
+
+  it('清空曲库时也清掉"别再导入"的记录', async () => {
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), {
+      target: { files: [audioFile('alpha.flac'), audioFile('beta.flac')] },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '从曲库移除 alpha' }))
+    expect(localStorage.getItem('local-player:excluded:v1')).toContain('alpha')
+
+    await userEvent.click(screen.getByRole('button', { name: '清空曲库' }))
+    await userEvent.click(screen.getByRole('button', { name: '确定清空？' }))
+
+    expect(localStorage.getItem('local-player:excluded:v1')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('移除记录也一起清了')
   })
 })

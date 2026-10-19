@@ -3,8 +3,14 @@ import type { ChangeEvent, DragEvent } from 'react'
 import PlayerBar from './components/PlayerBar'
 import TopBar from './components/TopBar'
 import TrackList from './components/TrackList'
+import { clearExcluded, loadExcluded, saveExcluded } from './lib/exclusions'
 import { AUDIO_ACCEPT, isAudioFileName, stripExtension } from './lib/format'
 import type { Track } from './types'
+
+interface Notice {
+  text: string
+  action?: { label: string; onClick: () => void }
+}
 
 export default function App() {
   const [tracks, setTracks] = useState<Track[]>([])
@@ -16,14 +22,18 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [dragging, setDragging] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  // 移除过的曲目 id：重新扫描时跳过，不打扰用户。
+  const [excluded, setExcluded] = useState<Set<string>>(() => loadExcluded())
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const objectUrlsRef = useRef<string[]>([])
   const dragDepthRef = useRef(0)
+  // 刚移除、还能撤销的那一首。撤销窗口内不回收 blob URL，否则撤销回来也放不了。
+  const pendingUndoRef = useRef<{ track: Track; index: number } | null>(null)
 
   // webkitdirectory 不在 React 的 props 类型里，直接打属性最省事。
   useEffect(() => {
@@ -42,8 +52,20 @@ export default function App() {
     document.body.classList.toggle('is-paused', !playing)
   }, [playing])
 
+  const notify = useCallback((text: string, action?: Notice['action']) => {
+    setNotice(action ? { text, action } : { text })
+  }, [])
+
   useEffect(() => {
-    if (!notice) return
+    if (!notice) {
+      // 提示消失 = 撤销窗口关闭，这时才真正回收刚移除那首的 blob URL。
+      const pending = pendingUndoRef.current
+      if (pending) {
+        URL.revokeObjectURL(pending.track.src)
+        pendingUndoRef.current = null
+      }
+      return
+    }
     const timer = window.setTimeout(() => setNotice(null), 3200)
     return () => window.clearTimeout(timer)
   }, [notice])
@@ -81,10 +103,10 @@ export default function App() {
       setCurrentId(track.id)
       void audio.play().catch(() => {
         setPlaying(false)
-        setNotice('播放失败：浏览器可能不支持这个格式，或自动播放被拦截')
+        notify('播放失败：浏览器可能不支持这个格式，或自动播放被拦截')
       })
     },
-    [volume],
+    [notify, volume],
   )
 
   const togglePlay = useCallback(() => {
@@ -95,11 +117,11 @@ export default function App() {
       return
     }
     if (audio.paused) {
-      void audio.play().catch(() => setNotice('播放失败：请再点一次播放'))
+      void audio.play().catch(() => notify('播放失败：请再点一次播放'))
     } else {
       audio.pause()
     }
-  }, [current, playTrack, tracks])
+  }, [current, notify, playTrack, tracks])
 
   const step = useCallback(
     (delta: number) => {
@@ -108,12 +130,12 @@ export default function App() {
       const next = tracks[base + delta]
       if (!next) {
         audioRef.current?.pause()
-        setNotice(delta > 0 ? '已经是最后一首' : '已经是第一首')
+        notify(delta > 0 ? '已经是最后一首' : '已经是第一首')
         return
       }
       playTrack(next)
     },
-    [currentIndex, playTrack, tracks],
+    [currentIndex, notify, playTrack, tracks],
   )
 
   const seekTo = useCallback((seconds: number) => {
@@ -134,15 +156,20 @@ export default function App() {
       const files = Array.from(fileList)
       const audioFiles = files.filter((file) => isAudioFileName(file.name))
       if (audioFiles.length === 0) {
-        setNotice(`没有找到可播放的音频（支持 ${AUDIO_ACCEPT}）`)
+        notify(`没有找到可播放的音频（支持 ${AUDIO_ACCEPT}）`)
         return
       }
 
       const known = new Set(tracks.map((track) => track.id))
       const fresh: Track[] = []
+      let remembered = 0
       for (const file of audioFiles) {
         const id = `${file.name}-${file.size}-${file.lastModified}`
         if (known.has(id)) continue
+        if (excluded.has(id)) {
+          remembered += 1
+          continue
+        }
         known.add(id)
         const src = URL.createObjectURL(file)
         objectUrlsRef.current.push(src)
@@ -157,28 +184,67 @@ export default function App() {
       }
 
       if (fresh.length === 0) {
-        setNotice('这些歌曲已经在列表里了')
+        notify(
+          remembered > 0
+            ? `${remembered} 首你之前移除过，不再导入`
+            : '这些歌曲已经在列表里了',
+        )
         return
       }
       setTracks((prev) => [...prev, ...fresh])
       setCurrentId((id) => id ?? fresh[0]?.id ?? null)
 
       const skipped = files.length - audioFiles.length
-      setNotice(
-        skipped > 0
-          ? `已导入 ${fresh.length} 首，跳过 ${skipped} 个不支持的文件`
-          : `已导入 ${fresh.length} 首`,
-      )
+      const parts = [`已导入 ${fresh.length} 首`]
+      if (skipped > 0) parts.push(`跳过 ${skipped} 个不支持的文件`)
+      if (remembered > 0) parts.push(`${remembered} 首你移除过，已跳过`)
+      notify(parts.join('，'))
     },
-    [tracks],
+    [excluded, notify, tracks],
   )
 
-  // 从曲库移除：只丢内存里的这一条和它的 blob URL，磁盘上的文件不动。
+  // 撤销移除：把歌放回原来的位置，并把它从排除表里去掉。
+  const undoRemove = useCallback(
+    (track: Track, index: number) => {
+      setTracks((prev) => {
+        if (prev.some((item) => item.id === track.id)) return prev
+        const next = [...prev]
+        next.splice(Math.max(0, Math.min(index, next.length)), 0, track)
+        return next
+      })
+      setExcluded((prev) => {
+        const next = new Set(prev)
+        next.delete(track.id)
+        saveExcluded(next)
+        return next
+      })
+      pendingUndoRef.current = null
+      notify(`已恢复《${track.title}》`)
+    },
+    [notify],
+  )
+
+  // 从曲库移除：只丢内存里的这一条，磁盘上的文件不动；
+  // 这个 id 会记进排除表，下次扫描同一批文件不会再导入。
   const removeTrack = useCallback(
     (track: Track) => {
-      URL.revokeObjectURL(track.src)
-      objectUrlsRef.current = objectUrlsRef.current.filter((url) => url !== track.src)
+      const index = tracks.findIndex((item) => item.id === track.id)
+
+      // 上一首被移除的如果还没撤销，它的 blob URL 现在可以真正回收了。
+      const stale = pendingUndoRef.current
+      if (stale && stale.track.id !== track.id) {
+        URL.revokeObjectURL(stale.track.src)
+        pendingUndoRef.current = null
+        objectUrlsRef.current = objectUrlsRef.current.filter((url) => url !== stale.track.src)
+      }
+
       setTracks((prev) => prev.filter((item) => item.id !== track.id))
+      setExcluded((prev) => {
+        const next = new Set(prev)
+        next.add(track.id)
+        saveExcluded(next)
+        return next
+      })
 
       if (track.id === currentId) {
         const audio = audioRef.current
@@ -189,14 +255,20 @@ export default function App() {
         setElapsed(0)
         setDuration(0)
       }
-      setNotice(`已从曲库移除《${track.title}》，源文件没动`)
+
+      pendingUndoRef.current = { track, index: Math.max(0, index) }
+      notify(`已移除《${track.title}》，源文件没动`, {
+        label: '撤销',
+        onClick: () => undoRemove(track, Math.max(0, index)),
+      })
     },
-    [currentId],
+    [currentId, notify, tracks, undoRemove],
   )
 
   const clearLibrary = useCallback(() => {
     objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
     objectUrlsRef.current = []
+    pendingUndoRef.current = null
     const audio = audioRef.current
     audio?.pause()
     audio?.removeAttribute('src')
@@ -206,8 +278,11 @@ export default function App() {
     setElapsed(0)
     setDuration(0)
     setQuery('')
-    setNotice('曲库已清空，源文件没动')
-  }, [])
+    // 清空曲库 = 忘掉本地记录，包括"别再导入这几首"。
+    setExcluded(new Set())
+    clearExcluded()
+    notify('曲库已清空，源文件没动；移除记录也一起清了')
+  }, [notify])
 
   // 清空要点两下：第一下把按钮变成"确定清空？"，3 秒内不点就自己退回。
   const requestClear = useCallback(() => {
@@ -378,7 +453,7 @@ export default function App() {
           )
         }}
         onEnded={() => step(1)}
-        onError={() => setNotice('这一首放不了：浏览器不支持该编码')}
+        onError={() => notify('这一首放不了：浏览器不支持该编码')}
       />
 
       <div className={dragging ? 'drop-overlay show' : 'drop-overlay'} aria-hidden={!dragging}>
@@ -390,7 +465,12 @@ export default function App() {
 
       {notice ? (
         <div className="toast show" role="status" aria-live="polite">
-          {notice}
+          <span>{notice.text}</span>
+          {notice.action ? (
+            <button className="toast-action" type="button" onClick={notice.action.onClick}>
+              {notice.action.label}
+            </button>
+          ) : null}
         </div>
       ) : null}
 
