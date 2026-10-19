@@ -6,7 +6,18 @@ import TopBar from './components/TopBar'
 import TrackList from './components/TrackList'
 import { AUDIO_ACCEPT, isAudioFileName, stripExtension } from './lib/format'
 import { mapLimit } from './lib/concurrency'
-import { cacheKey, hasCover, readCachedTags, writeCachedTags, writeCover } from './lib/meta-cache'
+import {
+  cacheKey,
+  clearCachedTags,
+  clearLibraryHandle,
+  hasCover,
+  readCachedTags,
+  readLibraryHandle,
+  writeCachedTags,
+  writeCover,
+  writeLibraryHandle,
+} from './lib/meta-cache'
+import { collectAudioFiles, ensurePermission, pickDirectory, supportsDirectoryPicker } from './lib/fs-access'
 import type { TrackTags } from './lib/metadata'
 import { readTagsQueued } from './lib/tags'
 import type { Track } from './types'
@@ -45,6 +56,9 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  // 上次导入过的目录句柄：有它就能在重启后把曲库拿回来（用户点一下授权即可）。
+  const [savedHandle, setSavedHandle] = useState<FileSystemDirectoryHandle | null>(null)
+  const [needsGrant, setNeedsGrant] = useState(false)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -237,14 +251,10 @@ export default function App() {
     [notify],
   )
 
-  // 导入就是导入：同一批文件重复选只会去重，不会因为"以前移除过"而拦下来。
-  const addFiles = useCallback(
-    (input: FileList | File[] | null) => {
-      if (!input) return
-      const files = Array.from(input)
-      if (files.length === 0) return
-      const audioFiles = files.filter((file) => isAudioFileName(file.name))
-      if (audioFiles.length === 0) {
+  // 所有导入最终都走这里：占位行先上，标签后填。
+  const addEntries = useCallback(
+    (items: { file: File; path: string }[], skipped = 0) => {
+      if (items.length === 0) {
         notify(`没有找到可播放的音频（支持 ${AUDIO_ACCEPT}）`)
         return
       }
@@ -252,8 +262,7 @@ export default function App() {
       const known = new Set(tracks.map((track) => track.id))
       const entries: ImportEntry[] = []
       const placeholders: Track[] = []
-      for (const file of audioFiles) {
-        const path = fileTrackPath(file)
+      for (const { file, path } of items) {
         const id = fileTrackId(path, file)
         if (known.has(id)) continue
         known.add(id)
@@ -282,7 +291,6 @@ export default function App() {
       setTracks((prev) => [...prev, ...placeholders])
       setCurrentId((id) => id ?? placeholders[0]?.id ?? null)
 
-      const skipped = files.length - audioFiles.length
       const parts = [`已导入 ${placeholders.length} 首`]
       if (skipped > 0) parts.push(`跳过 ${skipped} 个不支持的文件`)
       notify(`${parts.join('，')}，正在读标签…`)
@@ -291,6 +299,83 @@ export default function App() {
     },
     [hydrateTags, notify, tracks],
   )
+
+  // 导入就是导入：同一批文件重复选只会去重，不会因为"以前移除过"而拦下来。
+  const addFiles = useCallback(
+    (input: FileList | File[] | null) => {
+      if (!input) return
+      const files = Array.from(input)
+      const audio = files.filter((file) => isAudioFileName(file.name))
+      const items = audio.map((file) => ({ file, path: fileTrackPath(file) }))
+      addEntries(items, files.length - audio.length)
+    },
+    [addEntries],
+  )
+
+  const addEntriesRef = useRef(addEntries)
+  addEntriesRef.current = addEntries
+
+  // 目录导入：Chromium 走 File System Access（拿得到真实路径、句柄还能存），
+  // 其它浏览器退回 <input webkitdirectory>——那条路每次都要重选文件夹。
+  const importDirectory = useCallback(async () => {
+    if (!supportsDirectoryPicker()) {
+      folderInputRef.current?.click()
+      return
+    }
+    try {
+      const handle = await pickDirectory()
+      if (!handle) return
+      await writeLibraryHandle(handle)
+      setSavedHandle(handle)
+      setNeedsGrant(false)
+      addEntries(await collectAudioFiles(handle))
+    } catch (error) {
+      notify(error instanceof Error ? `读取文件夹失败：${error.message}` : '读取文件夹失败')
+    }
+  }, [addEntries, notify])
+
+  // 用户手势里重新要权限，然后重新扫一遍上次那个目录。
+  const restoreLibrary = useCallback(
+    async (handle: FileSystemDirectoryHandle) => {
+      try {
+        if (!(await ensurePermission(handle, true))) {
+          notify('浏览器没给权限，重新选一次文件夹吧')
+          return
+        }
+        setNeedsGrant(false)
+        addEntriesRef.current(await collectAudioFiles(handle))
+      } catch {
+        notify('读不到上次的文件夹，重新选一次吧')
+      }
+    },
+    [notify],
+  )
+
+  // 启动时试一次静默恢复：句柄还在、权限还在，曲库就直接回来；
+  // 权限过期（浏览器重启后常见）就留一个「继续上次的曲库」按钮，点一下再授权。
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const handle = await readLibraryHandle().catch(() => null)
+      if (!handle || cancelled) return
+      setSavedHandle(handle)
+      const granted = await ensurePermission(handle, false).catch(() => false)
+      if (cancelled) return
+      if (!granted) {
+        setNeedsGrant(true)
+        return
+      }
+      try {
+        const items = await collectAudioFiles(handle)
+        if (!cancelled) addEntriesRef.current(items)
+      } catch {
+        if (!cancelled) setNeedsGrant(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // 撤销移除：把歌按原位置放回去。
   const undoRemove = useCallback(
@@ -356,6 +441,11 @@ export default function App() {
     setElapsed(0)
     setDuration(0)
     setQuery('')
+    // 清空就是清空：句柄和标签缓存一起丢，否则刷新一下曲库又自己回来了。
+    setSavedHandle(null)
+    setNeedsGrant(false)
+    void clearLibraryHandle()
+    void clearCachedTags()
     notify('曲库已清空，源文件没动')
   }, [notify])
 
@@ -409,7 +499,7 @@ export default function App() {
         confirmingClear={confirmClear}
         onQueryChange={setQuery}
         onImportFiles={() => fileInputRef.current?.click()}
-        onImportFolder={() => folderInputRef.current?.click()}
+        onImportFolder={() => void importDirectory()}
         onRequestClear={requestClear}
       />
 
@@ -432,9 +522,18 @@ export default function App() {
               </p>
               <div className="empty-actions">
                 <ImportMenu
-                  onImportFolder={() => folderInputRef.current?.click()}
+                  onImportFolder={() => void importDirectory()}
                   onImportFiles={() => fileInputRef.current?.click()}
                 />
+                {savedHandle && needsGrant ? (
+                  <button
+                    type="button"
+                    className="btn-import ghost"
+                    onClick={() => void restoreLibrary(savedHandle)}
+                  >
+                    继续上次的曲库
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : (
