@@ -36,11 +36,40 @@ beforeEach(() => {
 })
 
 describe('App', () => {
-  it('没有导入时显示空态和两个导入入口', () => {
+  it('没有导入时显示空态和一个导入入口', () => {
     render(<App />)
     expect(screen.getByText('曲库还是空的')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '选择文件夹' })).toBeInTheDocument()
     expect(screen.getByText('未播放')).toBeInTheDocument()
+    // 顶栏和空态里各一个「导入音乐」，是同一个控件放在两处。
+    expect(screen.getAllByRole('button', { name: /导入音乐/ })).toHaveLength(2)
+  })
+
+  it('导入按钮展开两条路：文件夹和文件', async () => {
+    render(<App />)
+    const topbar = within(screen.getByRole('banner'))
+    const trigger = topbar.getByRole('button', { name: /导入音乐/ })
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+    const menu = within(screen.getByRole('menu', { name: '导入方式' }))
+    // 注意「选择文件夹」里也含「选择文件」，用否定前瞻区分开。
+    expect(menu.getByRole('menuitem', { name: /^选择文件夹/ })).toBeInTheDocument()
+    expect(menu.getByRole('menuitem', { name: /^选择文件(?!夹)/ })).toBeInTheDocument()
+
+    // 选完一种就收起，不留一个挂着的菜单。
+    await userEvent.click(menu.getByRole('menuitem', { name: /^选择文件夹/ }))
+    expect(screen.queryByRole('menu', { name: '导入方式' })).not.toBeInTheDocument()
+  })
+
+  it('菜单可以按 Escape 关掉', async () => {
+    render(<App />)
+    await userEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: /导入音乐/ }))
+    expect(screen.getByRole('menu', { name: '导入方式' })).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu', { name: '导入方式' })).not.toBeInTheDocument()
   })
 
   it('导入文件后按文件名出现在列表里，并提示导入数量', () => {

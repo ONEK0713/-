@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
+import ImportMenu from './components/ImportMenu'
 import PlayerBar from './components/PlayerBar'
 import TopBar from './components/TopBar'
 import TrackList from './components/TrackList'
@@ -73,7 +74,8 @@ export default function App() {
       }
       return
     }
-    const timer = window.setTimeout(() => setNotice(null), 3200)
+    // 带"撤销"的提示多留一会儿：3.2 秒读完再挪鼠标去点，来不及。
+    const timer = window.setTimeout(() => setNotice(null), notice.action ? 5000 : 3200)
     return () => window.clearTimeout(timer)
   }, [notice])
 
@@ -383,16 +385,10 @@ export default function App() {
                 ，ape / wma / dsd 浏览器放不了。
               </p>
               <div className="empty-actions">
-                <button className="btn-import" type="button" onClick={() => folderInputRef.current?.click()}>
-                  扫描文件夹
-                </button>
-                <button
-                  className="btn-import ghost"
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  播放单个文件
-                </button>
+                <ImportMenu
+                  onImportFolder={() => folderInputRef.current?.click()}
+                  onImportFiles={() => fileInputRef.current?.click()}
+                />
               </div>
             </div>
           ) : (

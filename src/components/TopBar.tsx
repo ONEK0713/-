@@ -1,3 +1,4 @@
+import ImportMenu from './ImportMenu'
 import { SearchIcon } from './icons'
 
 interface TopBarProps {
@@ -50,12 +51,7 @@ export default function TopBar({
             {confirmingClear ? '确定清空？' : '清空曲库'}
           </button>
         ) : null}
-        <button className="btn-import" type="button" onClick={onImportFolder}>
-          选择文件夹
-        </button>
-        <button className="btn-import ghost" type="button" onClick={onImportFiles}>
-          选择文件
-        </button>
+        <ImportMenu onImportFolder={onImportFolder} onImportFiles={onImportFiles} />
       </div>
     </header>
   )

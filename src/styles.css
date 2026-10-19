@@ -615,7 +615,8 @@
     pointer-events: none;
   }
 
-  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  /* 提示条本身不挡点击，但带"撤销"时必须能点进去——之前少了这一行，按钮形同虚设。 */
+  .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 
   /* 提示里的"撤销"：跟着 toast 反色，不做成实体按钮，免得抢焦点。 */
   .toast-action {
@@ -670,7 +671,8 @@
     .content { padding: 0 16px; }
     .player { padding: 0 16px; }
     .queue { width: min(320px, 88vw); }
-    .topbar-actions .btn-import.ghost { display: none; }
+    .topbar-actions { gap: 6px; }
+    .topbar-actions .btn-import { padding: 0 12px; }
   }
 
   /* ---------- MVP 补充（demo 里没有的状态） ---------- */
@@ -729,6 +731,54 @@
   }
 
   .empty-actions .btn-import { margin-left: 0; }
+
+  /* ---------- 导入入口：一个按钮 + 展开的两条路 ---------- */
+
+  .import-menu {
+    position: relative;
+    margin-left: auto;
+  }
+
+  .import-menu .btn-import {
+    margin-left: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .caret { font-size: 10px; opacity: .75; }
+
+  .import-popover {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 40;
+    display: grid;
+    gap: 2px;
+    min-width: 200px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .import-item {
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .import-item:hover { background: var(--hover); }
+  .import-item strong { font-size: 13px; font-weight: 600; }
+  .import-item span { font-size: 11px; color: var(--muted); }
+
+  .empty-actions .import-menu { margin-left: 0; }
 
   .icon-btn:disabled,
   .play-btn:disabled {
