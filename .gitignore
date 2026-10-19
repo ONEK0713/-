@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-single/
 .pnpm-store/
 *.log
 # 临时工具与凭据（gh 二进制、OAuth 配置都不会进仓库）

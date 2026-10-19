@@ -20,10 +20,11 @@ Windows 上也可以直接双击 `dev.cmd`（本机 PATH 里没有 node，脚本
 ## 常用命令
 
 ```bash
-pnpm dev        # 开发服务器
-pnpm build      # tsc --noEmit + vite build
-pnpm typecheck  # 只做类型检查
-pnpm test       # vitest run
+pnpm dev          # 开发服务器
+pnpm build        # tsc --noEmit + vite build
+pnpm build:single # 单文件版：全部内联成一个 index.html（dist-single/）
+pnpm typecheck    # 只做类型检查
+pnpm test         # vitest run
 ```
 
 `NODE_OPTIONS=--import=./tools/net-exec-shim.mjs` 已经写进脚本：Vite 在本机会用管道 stdio 跑 `net use`
@@ -48,6 +49,15 @@ pnpm test       # vitest run
    `https://<用户名>.github.io/<仓库名>/`
 
 **其它静态托管**：`pnpm build` 之后把 `dist` 整个目录拖到 Netlify Drop / Cloudflare Pages 即可，无需配置。
+
+**单文件版（`pnpm build:single` → `dist-single/index.html`，约 520 KB）**
+
+整份应用（JS、CSS、标签解析库）内联进一个 html，没有外部请求，可以直接双击打开，也能当一个文件发出去。
+
+- 适合"发个文件给朋友"或没有网络/没有服务器的场合
+- `file://` 下「选择文件夹」不可用（`showDirectoryPicker` 要求安全上下文），用「选择文件」或把歌拖进窗口，一次多选几百首没问题
+- `file://` 是 opaque origin，IndexedDB 可能被禁用：标签缓存与封面缓存会失效，每次打开要重读标签；播放本身不受影响
+- 单文件模式没有独立 worker 文件可加载，标签解析在主线程跑，导入几百首时列表会陆续填充，进度靠顶部的提示看
 
 > 必须是 HTTPS 或 localhost：`showDirectoryPicker()` 要求安全上下文。用局域网 IP 直接访问会退化成
 > `<input webkitdirectory>`，能导入能播放，但刷新后恢复不了曲库。

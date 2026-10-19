@@ -73,7 +73,8 @@ let cursor = 0
 
 function getSlots(): Slot[] | null {
   if (slots) return slots.length > 0 ? slots : null
-  if (typeof Worker === 'undefined') {
+  // 单文件构建没有独立的 worker 文件可加载，直接在主线程解析。
+  if (__SINGLE_FILE__ || typeof Worker === 'undefined') {
     slots = []
     return null
   }

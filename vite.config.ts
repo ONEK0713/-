@@ -8,6 +8,9 @@ export default defineConfig({
   // 相对路径：构建产物可以放在任何子目录（GitHub Pages 的 /repo/、网盘的子目录），
   // 不依赖站点根路径。dev 与 preview 服务器不受影响。
   base: './',
+  // 单文件构建（tools/build-single.mjs）会把它覆盖成 true：那种产物只有一个 html，
+  // 不能有独立的 worker 文件，解析退到主线程。
+  define: { __SINGLE_FILE__: 'false' },
   server: { port: 8787, strictPort: true },
   preview: { port: 8787, strictPort: true },
   test: {
