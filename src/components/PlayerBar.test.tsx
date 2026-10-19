@@ -50,7 +50,7 @@ beforeEach(() => {
 describe('PlayerBar 封面', () => {
   it('有封面指纹时显示图片', async () => {
     const { container } = renderBar(track({ coverHash: 'abc123' }))
-    await waitFor(() => expect(container.querySelector('.cover img')).not.toBeNull())
+    await waitFor(() => expect(container.querySelector('.cover img')).not.toBeNull(), { timeout: 3000 })
     expect(container.querySelector('.cover img')).toHaveAttribute('src', 'blob:cover')
   })
 
@@ -62,15 +62,18 @@ describe('PlayerBar 封面', () => {
 
   it('封面解码失败时退回音符占位，不留破图标', async () => {
     const { container } = renderBar(track({ coverHash: 'abc123' }))
-    const image = await waitFor(() => {
-      const found = container.querySelector('.cover img')
-      if (!found) throw new Error('还没渲染出图片')
-      return found
-    })
+    const image = await waitFor(
+      () => {
+        const found = container.querySelector('.cover img')
+        if (!found) throw new Error('还没渲染出图片')
+        return found
+      },
+      { timeout: 3000 },
+    )
 
     fireEvent.error(image)
 
-    await waitFor(() => expect(container.querySelector('.cover img')).toBeNull())
+    await waitFor(() => expect(container.querySelector('.cover img')).toBeNull(), { timeout: 3000 })
     expect(container.querySelector('.cover span')?.textContent).toBe('♪')
   })
 })

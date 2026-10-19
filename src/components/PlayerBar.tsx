@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { formatTime } from '../lib/format'
 import type { Track } from '../types'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, VolumeIcon } from './icons'
-import { useCoverUrl } from './useCoverUrl'
+import { useCoverUrl } from '../hooks/useCoverUrl'
 
 interface PlayerBarProps {
   track: Track | null
