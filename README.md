@@ -29,6 +29,29 @@ pnpm test       # vitest run
 `NODE_OPTIONS=--import=./tools/net-exec-shim.mjs` 已经写进脚本：Vite 在本机会用管道 stdio 跑 `net use`
 探测网络驱动器，当前环境不允许，shim 让这条命令直接失败、Vite 退回默认路径解析。
 
+## 部署 / 分享
+
+产物是纯静态文件（`dist/`，约 0.8 MB），没有后端。构建用了相对路径（`base: './'`），所以可以放在站点根路径，也可以放在任意子目录。
+
+**GitHub Pages（推荐，仓库里已带 [workflow](.github/workflows/pages.yml)）**
+
+1. 在 GitHub 上新建一个空仓库（不要勾 "Add a README"）
+2. 本地关联并推送：
+
+   ```bash
+   git remote add origin https://github.com/<用户名>/<仓库名>.git
+   git push -u origin master
+   ```
+
+3. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**
+4. 之后每次 push 到 `master`，Actions 会跑测试、构建并发布；页面地址是
+   `https://<用户名>.github.io/<仓库名>/`
+
+**其它静态托管**：`pnpm build` 之后把 `dist` 整个目录拖到 Netlify Drop / Cloudflare Pages 即可，无需配置。
+
+> 必须是 HTTPS 或 localhost：`showDirectoryPicker()` 要求安全上下文。用局域网 IP 直接访问会退化成
+> `<input webkitdirectory>`，能导入能播放，但刷新后恢复不了曲库。
+
 ## 能做什么
 
 - 导入：一个「导入音乐」按钮（选择文件夹 / 选择文件），也可以把文件或文件夹拖进窗口
