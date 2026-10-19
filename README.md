@@ -33,28 +33,32 @@ pnpm test       # vitest run
 
 - 导入：一个「导入音乐」按钮（选择文件夹 / 选择文件），也可以把文件或文件夹拖进窗口
 - 解析：标题、歌手、专辑、时长、封面；FLAC / MP3 / M4A / AAC / WAV / OGG
-- 列表：搜索（标题 / 歌手 / 专辑）、移除单曲（5 秒内可撤销）、清空曲库
-- 播放：播放暂停、上下曲、拖进度、调音量
+- 列表：搜索（标题 / 歌手 / 专辑）、点表头排序、移除单曲（5 秒内可撤销）、清空曲库
+- 播放：播放暂停、上下曲、拖进度、调音量、静音
+- 播放模式：顺序 / 列表循环 / 单曲循环 / 随机，按钮循环切换，选择记在本机
+- 快捷键：空格播放暂停、←/→ 快退快进、Ctrl+←/→ 切歌、↑/↓ 音量、M 静音、`/` 搜索
+- 大曲库：超过 150 首自动虚拟滚动，千首也不卡
 - 刷新保留曲库；关掉标签页重新打开是空的
 
 ## 不能做什么（有意为之）
 
 - 不支持 ape / wma / dsd——浏览器解不了
-- 没有队列抽屉、循环、随机、快捷键、排序、虚拟滚动（见 PRD §4.2）
+- 没有歌单、歌词、播放历史、系统媒体键（见 PRD §4.2）
 - 不跨会话记进度：重开标签页就是新的会话
+- 没有队列抽屉：上/下一首始终按导入顺序
 
 ## 目录
 
 ```
 src/
   App.tsx        组合 hooks + 布局
-  hooks/         useLibrary（曲库）/ usePlayback（播放）/ useImports（导入）/ useNotice / useCoverUrl
-  components/    TopBar / TrackList / PlayerBar / ImportMenu / icons
-  lib/           纯逻辑：标签解析、缓存、文件系统适配、格式化、搜索
+  hooks/         useLibrary（曲库）/ usePlayback（播放）/ useImports（导入）/ useNotice / useShortcuts / useVirtualRows / useCoverUrl
+  components/    TopBar / TrackList / ListHead / PlayerBar / ImportMenu / icons
+  lib/           纯逻辑：标签解析、缓存、文件系统适配、播放模式、排序、虚拟滚动、格式化、搜索
 docs/PRD.md      产品文档
 tools/           net-exec-shim（dev 补丁）、smoke（冒烟检查）
 ```
 
 ## 测试
 
-74 个用例，覆盖导入去重、标签缓存与编码兜底、移除撤销、刷新恢复、封面回退，以及时间格式 / 搜索 / 并发 / 句柄转换等纯函数。
+131 个用例，覆盖导入去重、标签缓存与编码兜底、移除撤销、刷新恢复、封面回退、播放模式与快捷键、排序、虚拟滚动，以及时间格式 / 搜索 / 并发 / 句柄转换等纯函数。
