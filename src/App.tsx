@@ -4,12 +4,18 @@ import PlayerBar from './components/PlayerBar'
 import TopBar from './components/TopBar'
 import TrackList from './components/TrackList'
 import { clearExcluded, loadExcluded, saveExcluded } from './lib/exclusions'
+import type { ExcludedTrack } from './lib/exclusions'
 import { AUDIO_ACCEPT, isAudioFileName, stripExtension } from './lib/format'
 import type { Track } from './types'
 
 interface Notice {
   text: string
   action?: { label: string; onClick: () => void }
+}
+
+// 跨浏览器都拿不到真实路径，只能用"名字+大小+修改时间"当指纹。
+function fileTrackId(file: File): string {
+  return `${file.name}-${file.size}-${file.lastModified}`
 }
 
 export default function App() {
@@ -24,8 +30,9 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
-  // 移除过的曲目 id：重新扫描时跳过，不打扰用户。
-  const [excluded, setExcluded] = useState<Set<string>>(() => loadExcluded())
+  // 移除过的曲目：重新扫描时先跳过，但随时可以「恢复并导入」。
+  const [excluded, setExcluded] = useState<ExcludedTrack[]>(() => loadExcluded())
+  const excludedIds = useMemo(() => new Set(excluded.map((entry) => entry.id)), [excluded])
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -150,10 +157,12 @@ export default function App() {
     if (audioRef.current) audioRef.current.volume = next
   }, [])
 
+  // restore = 用户明确点了「恢复并导入」：越过排除表，把之前移除过的歌放回来。
   const addFiles = useCallback(
-    (fileList: FileList | null) => {
-      if (!fileList || fileList.length === 0) return
-      const files = Array.from(fileList)
+    (input: FileList | File[] | null, options: { restore?: boolean } = {}) => {
+      if (!input) return
+      const files = Array.from(input)
+      if (files.length === 0) return
       const audioFiles = files.filter((file) => isAudioFileName(file.name))
       if (audioFiles.length === 0) {
         notify(`没有找到可播放的音频（支持 ${AUDIO_ACCEPT}）`)
@@ -162,12 +171,12 @@ export default function App() {
 
       const known = new Set(tracks.map((track) => track.id))
       const fresh: Track[] = []
-      let remembered = 0
+      const remembered: File[] = []
       for (const file of audioFiles) {
-        const id = `${file.name}-${file.size}-${file.lastModified}`
+        const id = fileTrackId(file)
         if (known.has(id)) continue
-        if (excluded.has(id)) {
-          remembered += 1
+        if (!options.restore && excludedIds.has(id)) {
+          remembered.push(file)
           continue
         }
         known.add(id)
@@ -183,24 +192,42 @@ export default function App() {
         })
       }
 
+      // 进了曲库就不该再算"移除过"，否则下次扫描还是会跳过它。
+      if (fresh.length > 0) {
+        const imported = new Set(fresh.map((track) => track.id))
+        setExcluded((prev) => {
+          const next = prev.filter((entry) => !imported.has(entry.id))
+          if (next.length === prev.length) return prev
+          saveExcluded(next)
+          return next
+        })
+      }
+
+      const restoreAction =
+        remembered.length > 0
+          ? { label: '恢复并导入', onClick: () => addFiles(remembered, { restore: true }) }
+          : undefined
+
       if (fresh.length === 0) {
         notify(
-          remembered > 0
-            ? `${remembered} 首你之前移除过，不再导入`
+          remembered.length > 0
+            ? `${remembered.length} 首你之前移除过，没有自动导入`
             : '这些歌曲已经在列表里了',
+          restoreAction,
         )
         return
       }
+
       setTracks((prev) => [...prev, ...fresh])
       setCurrentId((id) => id ?? fresh[0]?.id ?? null)
 
       const skipped = files.length - audioFiles.length
       const parts = [`已导入 ${fresh.length} 首`]
       if (skipped > 0) parts.push(`跳过 ${skipped} 个不支持的文件`)
-      if (remembered > 0) parts.push(`${remembered} 首你移除过，已跳过`)
-      notify(parts.join('，'))
+      if (remembered.length > 0) parts.push(`${remembered.length} 首你移除过，已跳过`)
+      notify(parts.join('，'), restoreAction)
     },
-    [excluded, notify, tracks],
+    [excludedIds, notify, tracks],
   )
 
   // 撤销移除：把歌放回原来的位置，并把它从排除表里去掉。
@@ -213,8 +240,8 @@ export default function App() {
         return next
       })
       setExcluded((prev) => {
-        const next = new Set(prev)
-        next.delete(track.id)
+        if (!prev.some((entry) => entry.id === track.id)) return prev
+        const next = prev.filter((entry) => entry.id !== track.id)
         saveExcluded(next)
         return next
       })
@@ -240,8 +267,8 @@ export default function App() {
 
       setTracks((prev) => prev.filter((item) => item.id !== track.id))
       setExcluded((prev) => {
-        const next = new Set(prev)
-        next.add(track.id)
+        if (prev.some((entry) => entry.id === track.id)) return prev
+        const next = [...prev, { id: track.id, title: track.title }]
         saveExcluded(next)
         return next
       })
@@ -278,8 +305,8 @@ export default function App() {
     setElapsed(0)
     setDuration(0)
     setQuery('')
-    // 清空曲库 = 忘掉本地记录，包括"别再导入这几首"。
-    setExcluded(new Set())
+    // 清空曲库 = 忘掉本地记录，包括"这几首先别导入"。
+    setExcluded([])
     clearExcluded()
     notify('曲库已清空，源文件没动；移除记录也一起清了')
   }, [notify])
