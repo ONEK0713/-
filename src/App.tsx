@@ -7,11 +7,13 @@ import ListHead from './components/ListHead'
 import { AUDIO_ACCEPT } from './lib/format'
 import { filterTracks } from './lib/search'
 import { nextSort, sortTracks, type SortKey, type SortState } from './lib/sort'
+import { ROW_HEIGHT, VIRTUALIZE_AFTER } from './lib/virtual'
 import { useImports } from './hooks/useImports'
 import { useLibrary } from './hooks/useLibrary'
 import { useNotice } from './hooks/useNotice'
 import { usePlayback } from './hooks/usePlayback'
 import { useShortcuts } from './hooks/useShortcuts'
+import { useVirtualRows } from './hooks/useVirtualRows'
 
 /** 清空要点两下，第二下之前留 3 秒。 */
 const CONFIRM_MS = 3000
@@ -35,6 +37,7 @@ export default function App() {
   const [sort, setSort] = useState<SortState>({ key: 'default', direction: 'asc' })
   const [confirmClear, setConfirmClear] = useState(false)
   const searchRef = useRef<HTMLInputElement | null>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
 
   useShortcuts({
     togglePlay: playback.togglePlay,
@@ -101,6 +104,14 @@ export default function App() {
     setSort((previous) => nextSort(previous, key))
   }, [])
 
+  const windowed = visibleTracks.length > VIRTUALIZE_AFTER
+  const rows = useVirtualRows({
+    scrollRef,
+    count: visibleTracks.length,
+    rowHeight: ROW_HEIGHT,
+    enabled: windowed,
+  })
+
   return (
     <div className="app" {...imports.dragProps}>
       <TopBar
@@ -115,7 +126,7 @@ export default function App() {
       />
 
       <main className="content">
-        <div className="list-scroll">
+        <div className="list-scroll" ref={scrollRef}>
           <ListHead sort={sort} onSort={changeSort} />
           {tracks.length === 0 ? (
             <div className="empty-state">
@@ -134,7 +145,10 @@ export default function App() {
             </div>
           ) : (
             <TrackList
-              tracks={visibleTracks}
+              tracks={windowed ? visibleTracks.slice(rows.start, rows.end) : visibleTracks}
+              startIndex={windowed ? rows.start : 0}
+              paddingTop={windowed ? rows.paddingTop : 0}
+              paddingBottom={windowed ? rows.paddingBottom : 0}
               currentId={playback.currentId}
               playing={playback.playing}
               onSelect={playback.playTrack}

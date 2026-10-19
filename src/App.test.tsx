@@ -359,4 +359,19 @@ describe('App', () => {
 
     expect(container.querySelector('.now-title')?.textContent).toBe('a')
   })
+
+  it('曲库很大时只渲染视口附近的行，序号仍是全局的', async () => {
+    const { container } = render(<App />)
+    const files = Array.from({ length: 200 }, (_, index) => audioFile(`曲目 ${index + 1}.flac`))
+    fireEvent.change(pickFileInput(container), { target: { files } })
+
+    const list = await screen.findByRole('list', { name: '曲库列表' })
+    await waitFor(() => {
+      const rendered = within(list).getAllByRole('listitem')
+      // 200 首里只该渲染一小段（视口 + 上下缓冲），不能一次性铺 200 行。
+      expect(rendered.length).toBeGreaterThan(0)
+      expect(rendered.length).toBeLessThan(50)
+    })
+    expect(within(list).getByText('01')).toBeInTheDocument()
+  })
 })

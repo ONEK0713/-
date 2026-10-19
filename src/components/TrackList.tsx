@@ -8,15 +8,30 @@ interface TrackListProps {
   playing: boolean
   onSelect: (track: Track) => void
   onRemove: (track: Track) => void
+  /** 虚拟滚动时，这一段在完整列表里的起始下标（用于显示正确的序号）。 */
+  startIndex?: number
+  paddingTop?: number
+  paddingBottom?: number
 }
 
-export default function TrackList({ tracks, currentId, playing, onSelect, onRemove }: TrackListProps) {
+export default function TrackList({
+  tracks,
+  currentId,
+  playing,
+  onSelect,
+  onRemove,
+  startIndex = 0,
+  paddingTop = 0,
+  paddingBottom = 0,
+}: TrackListProps) {
   if (tracks.length === 0) {
     return <p className="empty">没有匹配的歌曲</p>
   }
 
   return (
     <div className="list" role="list" aria-label="曲库列表">
+      {paddingTop > 0 ? <div style={{ height: paddingTop }} aria-hidden="true" /> : null}
+
       {tracks.map((track, index) => {
         const active = track.id === currentId
         const pending = track.tagState === 'pending'
@@ -35,7 +50,7 @@ export default function TrackList({ tracks, currentId, playing, onSelect, onRemo
             }}
           >
             <span className="idx">
-              {active && playing ? <EqualizerIcon /> : String(index + 1).padStart(2, '0')}
+              {active && playing ? <EqualizerIcon /> : String(startIndex + index + 1).padStart(2, '0')}
             </span>
             <span className="title" title={track.title}>
               {track.title}
@@ -59,6 +74,8 @@ export default function TrackList({ tracks, currentId, playing, onSelect, onRemo
           </div>
         )
       })}
+
+      {paddingBottom > 0 ? <div style={{ height: paddingBottom }} aria-hidden="true" /> : null}
     </div>
   )
 }
