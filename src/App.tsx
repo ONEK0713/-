@@ -323,12 +323,16 @@ export default function App() {
       return
     }
     try {
+      const epoch = libraryEpochRef.current
       const handle = await pickDirectory()
       if (!handle) return
       await writeLibraryHandle(handle)
       setSavedHandle(handle)
       setNeedsGrant(false)
-      addEntries(await collectAudioFiles(handle))
+      const items = await collectAudioFiles(handle)
+      // 扫描期间用户把曲库清空了：这批文件不该再冒出来。
+      if (libraryEpochRef.current !== epoch) return
+      addEntries(items)
     } catch (error) {
       notify(error instanceof Error ? `读取文件夹失败：${error.message}` : '读取文件夹失败')
     }
@@ -338,12 +342,15 @@ export default function App() {
   const restoreLibrary = useCallback(
     async (handle: FileSystemDirectoryHandle) => {
       try {
+        const epoch = libraryEpochRef.current
         if (!(await ensurePermission(handle, true))) {
           notify('浏览器没给权限，重新选一次文件夹吧')
           return
         }
         setNeedsGrant(false)
-        addEntriesRef.current(await collectAudioFiles(handle))
+        const items = await collectAudioFiles(handle)
+        if (libraryEpochRef.current !== epoch) return
+        addEntriesRef.current(items)
       } catch {
         notify('读不到上次的文件夹，重新选一次吧')
       }
@@ -366,8 +373,10 @@ export default function App() {
         return
       }
       try {
+        const epoch = libraryEpochRef.current
         const items = await collectAudioFiles(handle)
-        if (!cancelled) addEntriesRef.current(items)
+        if (cancelled || libraryEpochRef.current !== epoch) return
+        addEntriesRef.current(items)
       } catch {
         if (!cancelled) setNeedsGrant(true)
       }
