@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react'
 // 换端口等于用户丢曲库，所以 strictPort 让端口被占用时直接失败，而不是悄悄换端口。
 export default defineConfig({
   plugins: [react()],
+  // 相对路径：构建产物可以放在任何子目录（GitHub Pages 的 /repo/、网盘的子目录），
+  // 不依赖站点根路径。dev 与 preview 服务器不受影响。
+  base: './',
   server: { port: 8787, strictPort: true },
   preview: { port: 8787, strictPort: true },
   test: {
