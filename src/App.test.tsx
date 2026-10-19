@@ -265,4 +265,54 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: '从曲库移除 alpha' }))
     expect(Object.keys(localStorage)).toEqual([])
   })
+
+  it('点模式按钮轮换播放模式，并把模式记下来', async () => {
+    render(<App />)
+    const mode = screen.getByRole('button', { name: /播放模式/ })
+    expect(mode).toHaveAccessibleName('播放模式：顺序播放')
+
+    await userEvent.click(mode)
+    expect(screen.getByRole('button', { name: '播放模式：列表循环' })).toBeInTheDocument()
+    expect(localStorage.getItem('local-player:mode')).toBe('repeat-all')
+
+    await userEvent.click(screen.getByRole('button', { name: '播放模式：列表循环' }))
+    expect(screen.getByRole('button', { name: '播放模式：单曲循环' })).toBeInTheDocument()
+  })
+
+  it('上次选的播放模式会被读回来', () => {
+    localStorage.setItem('local-player:mode', 'shuffle')
+    render(<App />)
+    expect(screen.getByRole('button', { name: '播放模式：随机播放' })).toBeInTheDocument()
+  })
+
+  it('空格播放，方向键调音量', async () => {
+    const { container } = render(<App />)
+    fireEvent.change(pickFileInput(container), { target: { files: [audioFile('alpha.flac')] } })
+
+    fireEvent.keyDown(document.body, { key: ' ' })
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalled())
+
+    const volume = screen.getByLabelText('音量')
+    expect(volume).toHaveValue('70')
+    fireEvent.keyDown(document.body, { key: 'ArrowUp' })
+    expect(volume).toHaveValue('75')
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+    expect(volume).toHaveValue('70')
+  })
+
+  it('斜杠把焦点送到搜索框且不写进输入内容', () => {
+    render(<App />)
+    fireEvent.keyDown(document.body, { key: '/' })
+    const input = screen.getByLabelText('搜索歌曲')
+    expect(input).toHaveFocus()
+    expect(input).toHaveValue('')
+  })
+
+  it('M 键静音，再按一次恢复', () => {
+    render(<App />)
+    fireEvent.keyDown(document.body, { key: 'm' })
+    expect(screen.getByRole('button', { name: '取消静音' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.keyDown(document.body, { key: 'm' })
+    expect(screen.getByRole('button', { name: '静音' })).toHaveAttribute('aria-pressed', 'false')
+  })
 })

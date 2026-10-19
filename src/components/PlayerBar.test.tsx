@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Track } from '../types'
 import PlayerBar from './PlayerBar'
@@ -24,7 +24,7 @@ function track(overrides: Partial<Track> = {}): Track {
 
 const noop = () => {}
 
-function renderBar(current: Track) {
+function renderBar(current: Track, overrides: Partial<Parameters<typeof PlayerBar>[0]> = {}) {
   return render(
     <PlayerBar
       track={current}
@@ -32,12 +32,17 @@ function renderBar(current: Track) {
       elapsed={0}
       duration={current.duration}
       volume={0.7}
+      muted={false}
+      mode="order"
       canSkip
       onTogglePlay={noop}
       onPrevious={noop}
       onNext={noop}
       onSeek={noop}
       onVolumeChange={noop}
+      onToggleMute={noop}
+      onCycleMode={noop}
+      {...overrides}
     />,
   )
 }
@@ -75,5 +80,28 @@ describe('PlayerBar 封面', () => {
 
     await waitFor(() => expect(container.querySelector('.cover img')).toBeNull(), { timeout: 3000 })
     expect(container.querySelector('.cover span')?.textContent).toBe('♪')
+  })
+})
+
+describe('PlayerBar 模式与静音', () => {
+  it('点模式按钮切换播放模式', () => {
+    const onCycleMode = vi.fn()
+    renderBar(track(), { onCycleMode })
+    fireEvent.click(screen.getByRole('button', { name: /播放模式/ }))
+    expect(onCycleMode).toHaveBeenCalledTimes(1)
+  })
+
+  it('模式按钮上的名字跟着模式变', () => {
+    renderBar(track(), { mode: 'shuffle' })
+    expect(screen.getByRole('button', { name: '播放模式：随机播放' })).toBeInTheDocument()
+  })
+
+  it('静音时按钮变成取消静音，并带 aria-pressed', () => {
+    const onToggleMute = vi.fn()
+    renderBar(track(), { onToggleMute, muted: true })
+    const button = screen.getByRole('button', { name: '取消静音' })
+    expect(button).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(button)
+    expect(onToggleMute).toHaveBeenCalledTimes(1)
   })
 })

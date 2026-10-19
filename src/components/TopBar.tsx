@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import ImportMenu from './ImportMenu'
 import { SearchIcon } from './icons'
 
@@ -5,6 +6,7 @@ interface TopBarProps {
   query: string
   trackCount: number
   confirmingClear: boolean
+  searchRef?: RefObject<HTMLInputElement | null>
   onQueryChange: (value: string) => void
   onImportFiles: () => void
   onImportFolder: () => void
@@ -15,6 +17,7 @@ export default function TopBar({
   query,
   trackCount,
   confirmingClear,
+  searchRef,
   onQueryChange,
   onImportFiles,
   onImportFolder,
@@ -31,6 +34,7 @@ export default function TopBar({
       <div className="search">
         <SearchIcon />
         <input
+          ref={searchRef}
           type="search"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import TopBar from './components/TopBar'
 import TrackList from './components/TrackList'
 import PlayerBar from './components/PlayerBar'
@@ -9,6 +9,7 @@ import { useImports } from './hooks/useImports'
 import { useLibrary } from './hooks/useLibrary'
 import { useNotice } from './hooks/useNotice'
 import { usePlayback } from './hooks/usePlayback'
+import { useShortcuts } from './hooks/useShortcuts'
 
 /** 清空要点两下，第二下之前留 3 秒。 */
 const CONFIRM_MS = 3000
@@ -30,6 +31,16 @@ export default function App() {
 
   const [query, setQuery] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
+  const searchRef = useRef<HTMLInputElement | null>(null)
+
+  useShortcuts({
+    togglePlay: playback.togglePlay,
+    seekBy: playback.seekBy,
+    step: playback.step,
+    changeVolumeBy: playback.changeVolumeBy,
+    toggleMute: playback.toggleMute,
+    focusSearch: () => searchRef.current?.focus(),
+  })
 
   // 导入第一首时把它摆进播放条（不自动播）；已经选过就不动。
   const importEntries = useCallback(
@@ -84,6 +95,7 @@ export default function App() {
         query={query}
         trackCount={tracks.length}
         confirmingClear={confirmClear}
+        searchRef={searchRef}
         onQueryChange={setQuery}
         onImportFiles={() => void imports.importFiles()}
         onImportFolder={() => void imports.importDirectory()}
@@ -133,12 +145,16 @@ export default function App() {
         elapsed={playback.elapsed}
         duration={playback.duration}
         volume={playback.volume}
+        muted={playback.muted}
+        mode={playback.mode}
         canSkip={tracks.length > 1}
         onTogglePlay={playback.togglePlay}
         onPrevious={() => playback.step(-1)}
         onNext={() => playback.step(1)}
         onSeek={playback.seekTo}
         onVolumeChange={playback.changeVolume}
+        onToggleMute={playback.toggleMute}
+        onCycleMode={playback.cycleMode}
       />
 
       <audio ref={playback.audioRef} hidden {...playback.audioProps} />
