@@ -1,0 +1,60 @@
+# 本地音乐播放器
+
+纯本地、免登录、离线可用的音乐播放器。选一个文件夹，点一下就听；不上传、不联网、不碰你的源文件。
+
+- 产品需求与验收：[docs/PRD.md](docs/PRD.md)
+- 技术栈：Vite 8 + React 19 + TypeScript 7（strict）
+- 状态：MVP 已完成，未做项在 PRD §4.2 列明
+
+## 运行
+
+```bash
+pnpm install
+pnpm dev        # http://localhost:8787
+```
+
+Windows 上也可以直接双击 `dev.cmd`（本机 PATH 里没有 node，脚本里写死了运行时路径）。
+
+> 端口固定 8787：IndexedDB 与文件句柄按 origin 隔离，换端口等于换一个空曲库。
+
+## 常用命令
+
+```bash
+pnpm dev        # 开发服务器
+pnpm build      # tsc --noEmit + vite build
+pnpm typecheck  # 只做类型检查
+pnpm test       # vitest run
+```
+
+`NODE_OPTIONS=--import=./tools/net-exec-shim.mjs` 已经写进脚本：Vite 在本机会用管道 stdio 跑 `net use`
+探测网络驱动器，当前环境不允许，shim 让这条命令直接失败、Vite 退回默认路径解析。
+
+## 能做什么
+
+- 导入：一个「导入音乐」按钮（选择文件夹 / 选择文件），也可以把文件或文件夹拖进窗口
+- 解析：标题、歌手、专辑、时长、封面；FLAC / MP3 / M4A / AAC / WAV / OGG
+- 列表：搜索（标题 / 歌手 / 专辑）、移除单曲（5 秒内可撤销）、清空曲库
+- 播放：播放暂停、上下曲、拖进度、调音量
+- 刷新保留曲库；关掉标签页重新打开是空的
+
+## 不能做什么（有意为之）
+
+- 不支持 ape / wma / dsd——浏览器解不了
+- 没有队列抽屉、循环、随机、快捷键、排序、虚拟滚动（见 PRD §4.2）
+- 不跨会话记进度：重开标签页就是新的会话
+
+## 目录
+
+```
+src/
+  App.tsx        组合 hooks + 布局
+  hooks/         useLibrary（曲库）/ usePlayback（播放）/ useImports（导入）/ useNotice / useCoverUrl
+  components/    TopBar / TrackList / PlayerBar / ImportMenu / icons
+  lib/           纯逻辑：标签解析、缓存、文件系统适配、格式化、搜索
+docs/PRD.md      产品文档
+tools/           net-exec-shim（dev 补丁）、smoke（冒烟检查）
+```
+
+## 测试
+
+74 个用例，覆盖导入去重、标签缓存与编码兜底、移除撤销、刷新恢复、封面回退，以及时间格式 / 搜索 / 并发 / 句柄转换等纯函数。
