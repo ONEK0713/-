@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.pnpm-store/
+*.log
 
 # 验收用真实曲库，不进仓库（单首 FLAC 约 50MB）
 张震岳/

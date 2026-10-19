@@ -1,0 +1,6 @@
+# 这台机器的 Y: 盘上，pnpm 默认的“符号链接 + junction”布局会让 Node 的
+# 非 native realpath 解析不到真实目录：依赖从 .pnpm 里按 junction 路径往上找，
+# 结果在根 node_modules 找不到（vitest 报 Cannot find package 'std-env'），
+# React 也会被加载成两份（Cannot read properties of null (reading 'useState')）。
+# 改成像 npm 一样的扁平实体目录。
+nodeLinker: hoisted
