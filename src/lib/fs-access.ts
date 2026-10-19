@@ -1,8 +1,9 @@
 import { isAudioFileName } from './format'
 
 /**
- * 目录访问的抽象。现在只有 File System Access 一种实现，
- * 但它决定了"曲库能不能在重启后自己回来"——所以路径和权限都收在这一层。
+ * 目录访问的抽象：Chromium 用 File System Access 拿真实相对路径，
+ * 其它浏览器退回 <input webkitdirectory> 的 webkitRelativePath。
+ * 注意这里不保存句柄——曲库只活在当前会话里。
  */
 export interface FsFile {
   file: File
@@ -12,12 +13,6 @@ export interface FsFile {
 
 interface DirectoryPickerWindow {
   showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>
-}
-
-type PermissionDescription = { mode: 'read' | 'readwrite' }
-interface PermissionedHandle {
-  queryPermission?: (description: PermissionDescription) => Promise<PermissionState>
-  requestPermission?: (description: PermissionDescription) => Promise<PermissionState>
 }
 
 // 明显不是音乐的目录：进了 node_modules 就是把整个前端工程当曲库扫。
@@ -38,25 +33,6 @@ export async function pickDirectory(): Promise<FileSystemDirectoryHandle | null>
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') return null
     throw error
-  }
-}
-
-/**
- * 权限检查。request=false 只查不改（用于启动时判断能不能静默恢复），
- * request=true 会在用户手势里弹授权框。
- */
-export async function ensurePermission(handle: FileSystemDirectoryHandle, request: boolean): Promise<boolean> {
-  const permissioned = handle as FileSystemDirectoryHandle & PermissionedHandle
-  if (!permissioned.queryPermission) {
-    // 老实现没有权限 API：能不能读只能等 getFile 报错，先当作可以。
-    return true
-  }
-  try {
-    if ((await permissioned.queryPermission({ mode: 'read' })) === 'granted') return true
-    if (!request || !permissioned.requestPermission) return false
-    return (await permissioned.requestPermission({ mode: 'read' })) === 'granted'
-  } catch {
-    return false
   }
 }
 

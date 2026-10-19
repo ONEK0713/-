@@ -9,15 +9,12 @@ import { mapLimit } from './lib/concurrency'
 import {
   cacheKey,
   clearCachedTags,
-  clearLibraryHandle,
   hasCover,
   readCachedTags,
-  readLibraryHandle,
   writeCachedTags,
   writeCover,
-  writeLibraryHandle,
 } from './lib/meta-cache'
-import { collectAudioFiles, ensurePermission, pickDirectory, supportsDirectoryPicker } from './lib/fs-access'
+import { collectAudioFiles, pickDirectory, supportsDirectoryPicker } from './lib/fs-access'
 import type { TrackTags } from './lib/metadata'
 import { readTagsQueued } from './lib/tags'
 import type { Track } from './types'
@@ -56,9 +53,6 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
-  // 上次导入过的目录句柄：有它就能在重启后把曲库拿回来（用户点一下授权即可）。
-  const [savedHandle, setSavedHandle] = useState<FileSystemDirectoryHandle | null>(null)
-  const [needsGrant, setNeedsGrant] = useState(false)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -312,11 +306,8 @@ export default function App() {
     [addEntries],
   )
 
-  const addEntriesRef = useRef(addEntries)
-  addEntriesRef.current = addEntries
-
-  // 目录导入：Chromium 走 File System Access（拿得到真实路径、句柄还能存），
-  // 其它浏览器退回 <input webkitdirectory>——那条路每次都要重选文件夹。
+  // 目录导入：Chromium 走 File System Access（拿得到真实相对路径），
+  // 其它浏览器退回 <input webkitdirectory>。句柄不保存——曲库只活在这次会话里。
   const importDirectory = useCallback(async () => {
     if (!supportsDirectoryPicker()) {
       folderInputRef.current?.click()
@@ -326,9 +317,6 @@ export default function App() {
       const epoch = libraryEpochRef.current
       const handle = await pickDirectory()
       if (!handle) return
-      await writeLibraryHandle(handle)
-      setSavedHandle(handle)
-      setNeedsGrant(false)
       const items = await collectAudioFiles(handle)
       // 扫描期间用户把曲库清空了：这批文件不该再冒出来。
       if (libraryEpochRef.current !== epoch) return
@@ -337,54 +325,6 @@ export default function App() {
       notify(error instanceof Error ? `读取文件夹失败：${error.message}` : '读取文件夹失败')
     }
   }, [addEntries, notify])
-
-  // 用户手势里重新要权限，然后重新扫一遍上次那个目录。
-  const restoreLibrary = useCallback(
-    async (handle: FileSystemDirectoryHandle) => {
-      try {
-        const epoch = libraryEpochRef.current
-        if (!(await ensurePermission(handle, true))) {
-          notify('浏览器没给权限，重新选一次文件夹吧')
-          return
-        }
-        setNeedsGrant(false)
-        const items = await collectAudioFiles(handle)
-        if (libraryEpochRef.current !== epoch) return
-        addEntriesRef.current(items)
-      } catch {
-        notify('读不到上次的文件夹，重新选一次吧')
-      }
-    },
-    [notify],
-  )
-
-  // 启动时试一次静默恢复：句柄还在、权限还在，曲库就直接回来；
-  // 权限过期（浏览器重启后常见）就留一个「继续上次的曲库」按钮，点一下再授权。
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      const handle = await readLibraryHandle().catch(() => null)
-      if (!handle || cancelled) return
-      setSavedHandle(handle)
-      const granted = await ensurePermission(handle, false).catch(() => false)
-      if (cancelled) return
-      if (!granted) {
-        setNeedsGrant(true)
-        return
-      }
-      try {
-        const epoch = libraryEpochRef.current
-        const items = await collectAudioFiles(handle)
-        if (cancelled || libraryEpochRef.current !== epoch) return
-        addEntriesRef.current(items)
-      } catch {
-        if (!cancelled) setNeedsGrant(true)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // 撤销移除：把歌按原位置放回去。
   const undoRemove = useCallback(
@@ -450,10 +390,7 @@ export default function App() {
     setElapsed(0)
     setDuration(0)
     setQuery('')
-    // 清空就是清空：句柄和标签缓存一起丢，否则刷新一下曲库又自己回来了。
-    setSavedHandle(null)
-    setNeedsGrant(false)
-    void clearLibraryHandle()
+    // 标签缓存跟着清：曲库是空的，缓存就没有意义了。
     void clearCachedTags()
     notify('曲库已清空，源文件没动')
   }, [notify])
@@ -529,20 +466,12 @@ export default function App() {
                 选一个音乐文件夹，或把文件拖进来。目前支持 {AUDIO_ACCEPT.replaceAll('.', '')}
                 ，ape / wma / dsd 浏览器放不了。
               </p>
+              <p className="empty-hint">曲库只存在这个页面里，刷新后需要重新导入。</p>
               <div className="empty-actions">
                 <ImportMenu
                   onImportFolder={() => void importDirectory()}
                   onImportFiles={() => fileInputRef.current?.click()}
                 />
-                {savedHandle && needsGrant ? (
-                  <button
-                    type="button"
-                    className="btn-import ghost"
-                    onClick={() => void restoreLibrary(savedHandle)}
-                  >
-                    继续上次的曲库
-                  </button>
-                ) : null}
               </div>
             </div>
           ) : (

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, afterEach } from 'vitest'
-import { collectAudioFiles, ensurePermission, pickDirectory, supportsDirectoryPicker } from './fs-access'
+import { describe, expect, it, afterEach } from 'vitest'
+import { collectAudioFiles, pickDirectory, supportsDirectoryPicker } from './fs-access'
 
 function fileHandle(name: string): FileSystemFileHandle {
   const file = new File([new Uint8Array([1, 2, 3])], name)
@@ -35,36 +35,6 @@ describe('collectAudioFiles', () => {
 
   it('空目录返回空数组', async () => {
     expect(await collectAudioFiles(dirHandle('empty', []))).toEqual([])
-  })
-})
-
-describe('ensurePermission', () => {
-  const withPermission = (query: PermissionState | null, request?: PermissionState) =>
-    ({
-      kind: 'directory',
-      name: 'music',
-      ...(query ? { queryPermission: vi.fn(async () => query) } : {}),
-      ...(request ? { requestPermission: vi.fn(async () => request) } : {}),
-    }) as unknown as FileSystemDirectoryHandle
-
-  it('已授权时直接放行', async () => {
-    expect(await ensurePermission(withPermission('granted'), false)).toBe(true)
-  })
-
-  it('未授权且不申请时返回 false', async () => {
-    expect(await ensurePermission(withPermission('prompt'), false)).toBe(false)
-  })
-
-  it('用户手势里能申请到权限', async () => {
-    expect(await ensurePermission(withPermission('prompt', 'granted'), true)).toBe(true)
-  })
-
-  it('申请被拒返回 false', async () => {
-    expect(await ensurePermission(withPermission('prompt', 'denied'), true)).toBe(false)
-  })
-
-  it('老实现没有权限 API 时按可读处理', async () => {
-    expect(await ensurePermission(withPermission(null), false)).toBe(true)
   })
 })
 
