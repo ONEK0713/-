@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import { useEffect, useState } from 'react'
 import { formatTime } from '../lib/format'
 import type { Track } from '../types'
-import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, QueueIcon, VolumeIcon } from './icons'
+import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, VolumeIcon } from './icons'
 import { useCoverUrl } from './useCoverUrl'
 
 interface PlayerBarProps {
@@ -11,14 +11,12 @@ interface PlayerBarProps {
   elapsed: number
   duration: number
   volume: number
-  queueOpen: boolean
   canSkip: boolean
   onTogglePlay: () => void
   onPrevious: () => void
   onNext: () => void
   onSeek: (seconds: number) => void
   onVolumeChange: (volume: number) => void
-  onToggleQueue: () => void
 }
 
 function fillStyle(value: number, max: number): CSSProperties {
@@ -32,14 +30,12 @@ export default function PlayerBar({
   elapsed,
   duration,
   volume,
-  queueOpen,
   canSkip,
   onTogglePlay,
   onPrevious,
   onNext,
   onSeek,
   onVolumeChange,
-  onToggleQueue,
 }: PlayerBarProps) {
   const total = duration > 0 ? duration : (track?.duration ?? 0)
   const seekMax = total > 0 ? total : 1
@@ -129,17 +125,6 @@ export default function PlayerBar({
             onChange={(event) => onVolumeChange(Number(event.target.value) / 100)}
           />
         </div>
-
-        <button
-          className="queue-btn"
-          type="button"
-          aria-label="打开播放队列"
-          aria-expanded={queueOpen}
-          onClick={onToggleQueue}
-        >
-          <QueueIcon />
-          <span>队列</span>
-        </button>
       </div>
     </footer>
   )

@@ -32,14 +32,12 @@ function renderBar(current: Track) {
       elapsed={0}
       duration={current.duration}
       volume={0.7}
-      queueOpen={false}
       canSkip
       onTogglePlay={noop}
       onPrevious={noop}
       onNext={noop}
       onSeek={noop}
       onVolumeChange={noop}
-      onToggleQueue={noop}
     />,
   )
 }

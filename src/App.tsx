@@ -91,7 +91,6 @@ export default function App() {
   const [volume, setVolume] = useState(0.7)
   const [query, setQuery] = useState('')
   const [dragging, setDragging] = useState(false)
-  const [queueOpen, setQueueOpen] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
 
@@ -577,8 +576,6 @@ export default function App() {
     [addEntries, addFiles, rememberSources],
   )
 
-  const queued = currentIndex >= 0 ? tracks.slice(currentIndex + 1) : tracks
-
   return (
     <div
       className="app"
@@ -641,58 +638,18 @@ export default function App() {
         </div>
       </main>
 
-      <aside className={queueOpen ? 'queue open' : 'queue'} aria-hidden={!queueOpen} aria-label="播放队列">
-        <div className="queue-head">
-          <span>播放队列</span>
-          <button className="icon-btn" type="button" aria-label="关闭队列" onClick={() => setQueueOpen(false)}>
-            ✕
-          </button>
-        </div>
-        {/* 关闭时不渲染列表：1000 首的队列没必要在隐藏状态下也占一份 DOM。 */}
-        {queueOpen ? (
-          <>
-            <div className="queue-sub">
-              接下来 <span>{queued.length}</span> 首
-            </div>
-            <ol className="queue-list">
-              {queued.map((track) => (
-                <li
-                  key={track.id}
-                  className="queue-item"
-                  onClick={() => playTrack(track)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      playTrack(track)
-                    }
-                  }}
-                  tabIndex={0}
-                >
-                  <span className="q-title">{track.title}</span>
-                  <span className="q-artist">{track.artist || '未知歌手'}</span>
-                </li>
-              ))}
-            </ol>
-          </>
-        ) : null}
-      </aside>
-
-      <div className={queueOpen ? 'scrim show' : 'scrim'} onClick={() => setQueueOpen(false)} />
-
       <PlayerBar
         track={current}
         playing={playing}
         elapsed={elapsed}
         duration={duration}
         volume={volume}
-        queueOpen={queueOpen}
         canSkip={tracks.length > 1}
         onTogglePlay={togglePlay}
         onPrevious={() => step(-1)}
         onNext={() => step(1)}
         onSeek={seekTo}
         onVolumeChange={changeVolume}
-        onToggleQueue={() => setQueueOpen((open) => !open)}
       />
 
       <audio

@@ -52,6 +52,12 @@ describe('App', () => {
     expect(screen.getAllByRole('button', { name: /导入音乐/ })).toHaveLength(2)
   })
 
+  it('右下角没有队列了：既没有抽屉也没有入口按钮', () => {
+    render(<App />)
+    expect(screen.queryByRole('complementary', { name: '播放队列' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /队列/ })).not.toBeInTheDocument()
+  })
+
   it('导入按钮展开两条路：文件夹和文件', async () => {
     render(<App />)
     const topbar = within(screen.getByRole('banner'))

@@ -477,107 +477,6 @@
 
   .volume input { width: 84px; }
 
-  .queue-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 32px;
-    padding: 0 11px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: transparent;
-    font-size: 12px;
-    cursor: pointer;
-  }
-
-  .queue-btn:hover { background: var(--hover); }
-
-  /* ---------- 队列抽屉 ---------- */
-
-  .queue {
-    position: fixed;
-    top: 64px;
-    bottom: 88px;
-    right: 0;
-    width: 320px;
-    z-index: 30;
-    display: flex;
-    flex-direction: column;
-    background: var(--surface);
-    border-left: 1px solid var(--line);
-    box-shadow: var(--shadow);
-    transform: translateX(100%);
-    transition: transform .22s ease;
-  }
-
-  .queue.open { transform: none; }
-
-  .queue-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 12px 6px 18px;
-    font-size: 14px;
-    font-weight: 600;
-  }
-
-  .queue-sub {
-    padding: 0 18px 12px;
-    border-bottom: 1px solid var(--line);
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  .queue-list {
-    flex: 1;
-    overflow: auto;
-    margin: 0;
-    padding: 8px;
-    list-style: none;
-    scrollbar-width: thin;
-  }
-
-  .queue-item {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 9px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-
-  .queue-item:hover { background: var(--hover); }
-  .queue-item.current { background: var(--accent-soft); }
-  .queue-item.current .q-title { color: var(--accent); }
-
-  .q-title {
-    font-size: 13px;
-    font-weight: 500;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .q-artist {
-    font-size: 11px;
-    color: var(--muted);
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  .scrim {
-    position: fixed;
-    inset: 64px 0 88px 0;
-    z-index: 20;
-    background: rgba(0, 0, 0, .16);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .2s;
-  }
-
-  .scrim.show { opacity: 1; pointer-events: auto; }
-
   /* ---------- 拖拽导入 ---------- */
 
   .drop-overlay {
@@ -678,7 +577,6 @@
     .brand-name, .badge { display: none; }
     .content { padding: 0 16px; }
     .player { padding: 0 16px; }
-    .queue { width: min(320px, 88vw); }
     .topbar-actions { gap: 6px; }
     .topbar-actions .btn-import { padding: 0 12px; }
   }
