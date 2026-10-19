@@ -34,6 +34,15 @@ test('所有按钮都有可访问名称', () => {
   }
 });
 
+test('支持拖拽与文件选择导入', () => {
+  assert.match(html, /id="dropOverlay"/);
+  assert.match(html, /松开即可导入/);
+  assert.match(html, /id="fileInput"/);
+  assert.match(html, /webkitGetAsEntry/);
+  assert.match(html, /mp3\|flac\|m4a\|aac\|wav\|ogg/);
+  assert.match(html, /addEventListener\('drop'/);
+});
+
 test('内置示例曲目，且播放条与列表使用同一份数据', () => {
   assert.match(html, /夜航西飞/);
   assert.match(html, /Midnight Drive/);

@@ -546,6 +546,50 @@
 
   .scrim.show { opacity: 1; pointer-events: auto; }
 
+  /* ---------- 拖拽导入 ---------- */
+
+  .drop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: none;
+    place-items: center;
+    background: rgba(15, 15, 17, .5);
+    backdrop-filter: blur(3px);
+  }
+
+  .drop-overlay.show { display: grid; }
+
+  .drop-card {
+    padding: 40px 56px;
+    border: 2px dashed rgba(255, 255, 255, .55);
+    border-radius: 16px;
+    background: rgba(0, 0, 0, .25);
+    color: #fff;
+    text-align: center;
+  }
+
+  .drop-card strong { display: block; margin-bottom: 8px; font-size: 17px; }
+  .drop-card span { font-size: 12px; opacity: .75; }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 108px;
+    z-index: 60;
+    padding: 9px 16px;
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 12px;
+    opacity: 0;
+    transform: translate(-50%, 8px);
+    transition: opacity .2s, transform .2s;
+    pointer-events: none;
+  }
+
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
   /* ---------- 窄屏 ---------- */
 
   @media (max-width: 980px) {
@@ -604,7 +648,7 @@
       <input id="search" type="search" placeholder="搜索歌曲、歌手或专辑" aria-label="搜索歌曲" autocomplete="off">
     </div>
 
-    <button class="btn-import" type="button" aria-label="导入音乐">导入</button>
+    <button class="btn-import" id="importBtn" type="button" aria-label="导入音乐">导入</button>
   </header>
 
   <main class="content">
@@ -697,6 +741,16 @@
 
 </div>
 
+<div class="drop-overlay" id="dropOverlay" aria-hidden="true">
+  <div class="drop-card">
+    <strong>松开即可导入</strong>
+    <span>支持 mp3 / flac / m4a / aac / wav / ogg，可拖入文件夹</span>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input id="fileInput" type="file" multiple hidden>
+
 <script>
   const TRACKS = [
     { title: '夜航西飞', artist: '陈默', album: '飞行日记', duration: 245, cover: 'linear-gradient(135deg,#6366f1,#0ea5e9)' },
@@ -710,6 +764,17 @@
     { title: '候鸟', artist: '苏禾', album: '远方', duration: 288, cover: 'linear-gradient(135deg,#059669,#14b8a6)' },
     { title: 'Golden Hour', artist: 'June & The Tide', album: 'Little Things', duration: 215, cover: 'linear-gradient(135deg,#f43f5e,#fb923c)' }
   ];
+
+  const GRADIENTS = [
+    'linear-gradient(135deg,#6366f1,#0ea5e9)',
+    'linear-gradient(135deg,#f59e0b,#ef4444)',
+    'linear-gradient(135deg,#db2777,#7c3aed)',
+    'linear-gradient(135deg,#059669,#14b8a6)',
+    'linear-gradient(135deg,#f43f5e,#fb923c)'
+  ];
+
+  const AUDIO_RE = /\.(mp3|flac|m4a|aac|wav|ogg)$/i;
+  const imported = new Set();
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -734,6 +799,10 @@
   const queueListEl = $('#queueList');
   const queueCountEl = $('#queueCount');
   const scrimEl = $('#scrim');
+  const importBtn = $('#importBtn');
+  const fileInput = $('#fileInput');
+  const dropOverlay = $('#dropOverlay');
+  const toastEl = $('#toast');
 
   const state = {
     current: 0,
@@ -943,6 +1012,161 @@
     state.elapsed += 1;
     updateProgress();
   }, 1000);
+
+  let dragDepth = 0;
+  let toastTimer = 0;
+
+  function showToast(message) {
+    toastEl.textContent = message;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
+  }
+
+  function probeDuration(file) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const audio = new Audio();
+      let settled = false;
+
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        URL.revokeObjectURL(url);
+        resolve(value);
+      };
+
+      audio.preload = 'metadata';
+      audio.onloadedmetadata = () => finish(Math.round(audio.duration) || 0);
+      audio.onerror = () => finish(0);
+      audio.src = url;
+      setTimeout(() => finish(0), 3000);
+    });
+  }
+
+  function collectEntryFiles(entry, out) {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file((file) => { out.push(file); resolve(); }, () => resolve());
+        return;
+      }
+
+      if (!entry.isDirectory) { resolve(); return; }
+
+      const reader = entry.createReader();
+      const readNext = () => {
+        reader.readEntries((entries) => {
+          if (!entries.length) { resolve(); return; }
+          Promise.all(entries.map((child) => collectEntryFiles(child, out))).then(readNext, resolve);
+        }, () => resolve());
+      };
+
+      readNext();
+    });
+  }
+
+  async function importFiles(files) {
+    const audioFiles = files.filter((file) => AUDIO_RE.test(file.name));
+    if (!audioFiles.length) {
+      showToast('没有找到可导入的音频文件');
+      return;
+    }
+
+    let added = 0;
+    for (const file of audioFiles) {
+      const key = file.name + ':' + file.size;
+      if (imported.has(key)) continue;
+      imported.add(key);
+
+      const duration = await probeDuration(file);
+      TRACKS.push({
+        title: file.name.replace(/\.[^.]+$/, ''),
+        artist: '未知歌手',
+        album: '拖入的文件',
+        duration: duration,
+        cover: GRADIENTS[TRACKS.length % GRADIENTS.length]
+      });
+      added += 1;
+    }
+
+    if (!added) {
+      showToast('这些文件已经在曲库里了');
+      return;
+    }
+
+    render();
+    renderQueue();
+
+    const ignored = files.length - audioFiles.length;
+    showToast('已导入 ' + added + ' 首' + (ignored ? '，忽略 ' + ignored + ' 个非音频文件' : '') + '（Demo 不实际播放）');
+  }
+
+  async function handleDrop(event) {
+    const transfer = event.dataTransfer;
+    if (!transfer) return;
+
+    const items = Array.from(transfer.items || []);
+    const entries = items
+      .map((item) => (item.webkitGetAsEntry ? item.webkitGetAsEntry() : null))
+      .filter(Boolean);
+    const files = [];
+
+    if (entries.length) {
+      for (const entry of entries) await collectEntryFiles(entry, files);
+    } else {
+      files.push(...Array.from(transfer.files || []));
+    }
+
+    await importFiles(files);
+  }
+
+  function hasFiles(event) {
+    const types = event.dataTransfer && event.dataTransfer.types;
+    return Boolean(types && Array.from(types).includes('Files'));
+  }
+
+  function setDropVisible(visible) {
+    dropOverlay.classList.toggle('show', visible);
+    dropOverlay.setAttribute('aria-hidden', String(!visible));
+  }
+
+  window.addEventListener('dragenter', (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth += 1;
+    setDropVisible(true);
+  });
+
+  window.addEventListener('dragover', (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+
+  window.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) setDropVisible(false);
+  });
+
+  window.addEventListener('drop', (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth = 0;
+    setDropVisible(false);
+    handleDrop(event);
+  });
+
+  window.addEventListener('dragend', () => {
+    dragDepth = 0;
+    setDropVisible(false);
+  });
+
+  importBtn.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', () => {
+    importFiles(Array.from(fileInput.files || []));
+    fileInput.value = '';
+  });
 
   render();
   setMode(0);
