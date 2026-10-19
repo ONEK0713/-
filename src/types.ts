@@ -11,6 +11,8 @@ export interface Track {
   duration: number
   /** 可直接赋给 <audio src> 的地址（当前是 blob: URL）。 */
   src: string
+  /** 封面的内容指纹，指向 IndexedDB 里的封面缓存；null 表示没有封面。 */
+  coverHash: string | null
   /** 标签解析状态：pending 表示还在占位行阶段。 */
   tagState: 'pending' | 'ready' | 'failed'
 }

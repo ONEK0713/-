@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { formatTime } from '../lib/format'
 import type { Track } from '../types'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, QueueIcon, VolumeIcon } from './icons'
+import { useCoverUrl } from './useCoverUrl'
 
 interface PlayerBarProps {
   track: Track | null
@@ -41,12 +42,13 @@ export default function PlayerBar({
 }: PlayerBarProps) {
   const total = duration > 0 ? duration : (track?.duration ?? 0)
   const seekMax = total > 0 ? total : 1
+  const coverUrl = useCoverUrl(track?.coverHash ?? null)
 
   return (
     <footer className="player">
       <div className="now">
         <div className="cover" aria-hidden="true">
-          <span>{track ? '♪' : ''}</span>
+          {coverUrl ? <img src={coverUrl} alt="" /> : <span>{track ? '♪' : ''}</span>}
         </div>
         <div className="now-text">
           <div className="now-title">{track?.title ?? '未播放'}</div>

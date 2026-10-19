@@ -6,7 +6,7 @@ import TopBar from './components/TopBar'
 import TrackList from './components/TrackList'
 import { AUDIO_ACCEPT, isAudioFileName, stripExtension } from './lib/format'
 import { mapLimit } from './lib/concurrency'
-import { cacheKey, readCachedTags, writeCachedTags } from './lib/meta-cache'
+import { cacheKey, hasCover, readCachedTags, writeCachedTags, writeCover } from './lib/meta-cache'
 import type { TrackTags } from './lib/metadata'
 import { readTagsQueued } from './lib/tags'
 import type { Track } from './types'
@@ -194,7 +194,12 @@ export default function App() {
           const key = cacheKey(entry.path, entry.file.size, entry.file.lastModified)
           tags = await readCachedTags(key)
           if (!tags) {
-            tags = await readTagsQueued(entry.file)
+            const parsed = await readTagsQueued(entry.file)
+            tags = parsed.tags
+            // 封面单独按内容指纹存，同一张图只落一份；标签里只留指纹。
+            if (parsed.cover && !(await hasCover(parsed.cover.hash))) {
+              await writeCover(parsed.cover.hash, parsed.cover.blob)
+            }
             void writeCachedTags(key, tags)
           }
         } catch {
@@ -208,6 +213,7 @@ export default function App() {
             artist: tags.artist,
             album: tags.album,
             duration: tags.duration,
+            coverHash: tags.coverHash,
             tagState: 'ready',
           })
         } else {
@@ -262,6 +268,7 @@ export default function App() {
           album: '',
           duration: 0,
           src,
+          coverHash: null,
           tagState: 'pending',
         })
       }

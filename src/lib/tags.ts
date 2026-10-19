@@ -1,20 +1,20 @@
-import type { TrackTags } from './metadata'
+import type { ParsedAudio } from './metadata'
 
 // 解析器只在 Worker 或降级路径里需要：动态 import 让 music-metadata 不进主包，
 // 首屏少下载近 100KB。
-async function readDirect(file: File): Promise<TrackTags> {
-  const { readTags } = await import('./metadata')
-  return readTags(file)
+async function readDirect(file: File): Promise<ParsedAudio> {
+  const { readAudio } = await import('./metadata')
+  return readAudio(file)
 }
 
 interface Pending {
-  resolve: (tags: TrackTags) => void
+  resolve: (parsed: ParsedAudio) => void
   reject: (error: Error) => void
 }
 
 interface Response {
   id: number
-  tags?: TrackTags
+  parsed?: ParsedAudio
   error?: string
 }
 
@@ -33,11 +33,11 @@ class Slot {
   constructor() {
     this.worker = new Worker(new URL('./metadata.worker.ts', import.meta.url), { type: 'module' })
     this.worker.onmessage = (event: MessageEvent<Response>) => {
-      const { id, tags, error } = event.data
+      const { id, parsed, error } = event.data
       const entry = this.pending.get(id)
       if (!entry) return
       this.pending.delete(id)
-      if (tags) entry.resolve(tags)
+      if (parsed) entry.resolve(parsed)
       else entry.reject(new Error(error ?? '标签解析失败'))
     }
     this.worker.onerror = () => this.fail(new Error('标签解析线程异常退出'))
@@ -47,10 +47,10 @@ class Slot {
     return !this.broken
   }
 
-  read(file: File): Promise<TrackTags> {
+  read(file: File): Promise<ParsedAudio> {
     const id = this.nextId
     this.nextId += 1
-    return new Promise<TrackTags>((resolve, reject) => {
+    return new Promise<ParsedAudio>((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
       this.worker.postMessage({ id, file })
     })
@@ -90,7 +90,7 @@ function getSlots(): Slot[] | null {
  * 读标签：优先丢给 Worker 池，环境不支持（测试里的 jsdom）就在当前线程解析。
  * 池是模块级单例，导入 1000 首不会开 1000 个线程。
  */
-export async function readTagsQueued(file: File): Promise<TrackTags> {
+export async function readTagsQueued(file: File): Promise<ParsedAudio> {
   const pool = getSlots()
   if (!pool) return readDirect(file)
 

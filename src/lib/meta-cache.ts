@@ -1,8 +1,9 @@
 import type { TrackTags } from './metadata'
 
 const DB_NAME = 'local-player'
-const DB_VERSION = 1
-const STORE = 'tags'
+const DB_VERSION = 2
+const TAGS = 'tags'
+const COVERS = 'covers'
 
 let dbPromise: Promise<IDBDatabase | null> | null = null
 
@@ -22,7 +23,9 @@ function openDb(): Promise<IDBDatabase | null> {
     }
     request.onupgradeneeded = () => {
       const db = request.result
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE)
+      // 每个 store 单独判断：v1 的库里只有 tags，升级时补上 covers 就够了。
+      if (!db.objectStoreNames.contains(TAGS)) db.createObjectStore(TAGS)
+      if (!db.objectStoreNames.contains(COVERS)) db.createObjectStore(COVERS)
     }
     request.onsuccess = () => resolve(request.result)
     // 隐私模式、配额为 0 之类的情况：能播就行，缓存失败不算错误。
@@ -32,7 +35,11 @@ function openDb(): Promise<IDBDatabase | null> {
   return dbPromise
 }
 
-function run<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
+function run<T>(
+  storeName: string,
+  mode: IDBTransactionMode,
+  action: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T | null> {
   return openDb().then(
     (db) =>
       new Promise<T | null>((resolve) => {
@@ -41,8 +48,8 @@ function run<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDB
           return
         }
         try {
-          const transaction = db.transaction(STORE, mode)
-          const request = action(transaction.objectStore(STORE))
+          const transaction = db.transaction(storeName, mode)
+          const request = action(transaction.objectStore(storeName))
           request.onsuccess = () => resolve(request.result)
           request.onerror = () => resolve(null)
         } catch {
@@ -58,14 +65,29 @@ export function cacheKey(path: string, size: number, lastModified: number): stri
 }
 
 export async function readCachedTags(key: string): Promise<TrackTags | null> {
-  const value = await run<TrackTags | undefined>('readonly', (store) => store.get(key))
+  const value = await run<TrackTags | undefined>(TAGS, 'readonly', (store) => store.get(key))
   return value ?? null
 }
 
 export async function writeCachedTags(key: string, tags: TrackTags): Promise<void> {
-  await run<IDBValidKey>('readwrite', (store) => store.put(tags, key))
+  await run<IDBValidKey>(TAGS, 'readwrite', (store) => store.put(tags, key))
 }
 
 export async function clearCachedTags(): Promise<void> {
-  await run<undefined>('readwrite', (store) => store.clear())
+  await run<undefined>(TAGS, 'readwrite', (store) => store.clear())
+}
+
+// 封面按内容指纹存：同一张封面被 9 首歌引用，也只落一份（实测那张 136KB 的图每首存了两遍）。
+export async function readCover(hash: string): Promise<Blob | null> {
+  const value = await run<Blob | undefined>(COVERS, 'readonly', (store) => store.get(hash))
+  return value ?? null
+}
+
+export async function writeCover(hash: string, blob: Blob): Promise<void> {
+  await run<IDBValidKey>(COVERS, 'readwrite', (store) => store.put(blob, hash))
+}
+
+export async function hasCover(hash: string): Promise<boolean> {
+  const count = await run<number>(COVERS, 'readonly', (store) => store.count(hash))
+  return (count ?? 0) > 0
 }

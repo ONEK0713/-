@@ -7,15 +7,19 @@ import { readTagsQueued } from './lib/tags'
 // 真解析要读真实的音频字节，测试里用假的 File 必然失败；这里给一个稳定的假标签源。
 vi.mock('./lib/tags', () => ({
   readTagsQueued: vi.fn(async (file: File) => ({
-    title: file.name.replace(/\.[^.]+$/, ''),
-    artist: '测试歌手',
-    album: '测试专辑',
-    trackNo: null,
-    year: null,
-    duration: 200,
-    coverBytes: 0,
-    codec: 'FLAC',
-    lossless: true,
+    tags: {
+      title: file.name.replace(/\.[^.]+$/, ''),
+      artist: '测试歌手',
+      album: '测试专辑',
+      trackNo: null,
+      year: null,
+      duration: 200,
+      coverHash: null,
+      coverBytes: 0,
+      codec: 'FLAC',
+      lossless: true,
+    },
+    cover: null,
   })),
 }))
 
@@ -179,15 +183,19 @@ describe('App', () => {
     vi.mocked(readTagsQueued).mockImplementationOnce(async () => {
       await gate
       return {
-        title: '迟到的标签',
-        artist: '迟到的歌手',
-        album: '',
-        trackNo: null,
-        year: null,
-        duration: 100,
-        coverBytes: 0,
-        codec: 'FLAC',
-        lossless: true,
+        tags: {
+          title: '迟到的标签',
+          artist: '迟到的歌手',
+          album: '',
+          trackNo: null,
+          year: null,
+          duration: 100,
+          coverHash: null,
+          coverBytes: 0,
+          codec: 'FLAC',
+          lossless: true,
+        },
+        cover: null,
       }
     })
 
